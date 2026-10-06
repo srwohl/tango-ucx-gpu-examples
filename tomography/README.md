@@ -59,7 +59,38 @@ each processing stage. `--decompress-gpu`, `--correct-gpu` and `--reconstruct-gp
 override individual stages, so UCX can transfer between different GPUs. The
 independent reconstruction reference uses the reconstruction stage's GPU. Indices
 are logical device numbers within the inherited `CUDA_VISIBLE_DEVICES`. Placement
-and network policy are launch settings; reconstruction controls remain live.
+and network policy require new connections; the GUI can change them with a controlled
+restart, while reconstruction controls remain live between scans.
+
+The **Acquisition settings** panel starts with the running scan's settings and displays
+its image source, dimensions, data type, projections and frame/volume sizes.
+**Load current settings** discards local edits and reloads active acquisition and
+reconstruction settings. **Size buffers for this scan** calculates receive, host,
+pinned and output budgets from the scan and selected batch settings; the result is
+a draft until applied. Detailed controls are under **Advanced settings**.
+
+The panel controls UCX transport and processing batch sizes,
+scalar or batched decompression, transport/interface selection, GPU placement,
+host/GPU sinogram storage, memory budgets, output mode, scan pacing and synthetic
+detector dimensions. **Restart after current scan** drains the current run, verifies
+its archive and volumes, then starts a new run on the same viewer URL. The viewer
+briefly reconnects and starts a fresh volume history. The original output is retained;
+subsequent runs are saved in `run-0001`, `run-0002`, etc. beneath the original output.
+Requested and active settings are shown separately. Invalid memory layouts leave the
+current run active; a failed restart attempts to restore the previous settings.
+
+**Stop acquisition** in the header finishes the current scan, drains and verifies
+the output, cancels any queued restart and shuts down the pipeline. The last displayed
+image remains on the page. If the viewer is temporarily reconnecting, the stop request
+is retried automatically.
+
+Batched processing currently uses nvCOMP's list decoder; correction and reconstruction
+still process frames individually. The processing batch cannot exceed the UCX receive
+batch. Batches can be shorter at scan boundaries or when the receive wait expires.
+HDF5 dimensions stay fixed to the selected file. CLI equivalents are
+`--transport-batch`, `--processing-batch` and `--processing-mode scalar|batched`.
+For example, use `--transport-batch 16 --processing-batch 16 --processing-mode batched
+--budget 1048576` for the small synthetic demo.
 
 ```sh
 # Let UCX select a local GPU path, with reconstruction on a second GPU.

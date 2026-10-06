@@ -6,11 +6,46 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from demo import buffering_options, device_command, launch_environment, parse_args, reconstruction_options
+from demo import (buffering_options, device_command, launch_environment, parse_args,
+                  reconstruction_options, pipeline_args, pipeline_options)
 from host_buffering import memory_plan
 
 
 class LaunchPolicyTests(unittest.TestCase):
+    def test_restart_keeps_live_reconstruction_and_separates_batch_controls(self):
+        original = parse_args(["--algorithm", "fbp", "--live"])
+        options = pipeline_options(original)
+        options.update(network="auto", transport_batch=16, processing_batch=8,
+                       processing_mode="batched", receive_budget_mib=1,
+                       sinogram_memory="host", output_mode="blocks")
+        settings = dict(reconstruction_options(original), filter="hann", filter_cutoff=.7,
+                        gaussian_fwhm=2, scale_factor=1.2)
+        updated = pipeline_args(original, options, settings)
+        self.assertEqual((updated.transport_batch, updated.processing_batch), (16, 8))
+        self.assertEqual(updated.budget, 1024**2)
+        self.assertEqual(updated.slices_per_block, original.slices)
+        self.assertEqual(reconstruction_options(updated)["filter_cutoff"], .7)
+        self.assertEqual(reconstruction_options(updated)["gaussian_fwhm"], 2)
+        self.assertEqual(original.transport_batch, 1)
+
+    def test_unsafe_restart_is_rejected_before_changing_running_arguments(self):
+        original = parse_args(["--pixels", "256", "--slices", "128", "--algorithm", "fbp"])
+        for update, error in ((dict(transport_batch=16, receive_budget_mib=1), "receive budget"),
+                              (dict(sinogram_memory="host", host_buffer_mib=1), "host_budget_bytes")):
+            options = dict(pipeline_options(original), **update)
+            with self.subTest(update=update), self.assertRaisesRegex(ValueError, error):
+                pipeline_args(original, options)
+        self.assertEqual(original.sinogram_memory, "gpu")
+
+    def test_restart_preserves_file_geometry_and_viewer_capacity(self):
+        original = parse_args(["--live", "--algorithm", "fbp"])
+        original.hdf5 = Path("/tmp/example.h5")
+        with self.assertRaisesRegex(ValueError, "HDF5 detector dimensions"):
+            pipeline_args(original, dict(pipeline_options(original), slices=4))
+        original.hdf5 = None
+        with self.assertRaisesRegex(ValueError, "viewer history"):
+            pipeline_args(original, dict(pipeline_options(original), pixels=1024, slices=128))
+
     def test_output_blocks_freeze_capacity_and_check_host_consumer_budgets(self):
         args = parse_args(["--output-mode", "blocks", "--slices-per-block", "3"])
         buffers = buffering_options(args)

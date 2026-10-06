@@ -12,6 +12,8 @@ import urllib.request
 import numpy as np
 from PIL import Image
 
+from pipeline_control import PipelineControl, atomic_json
+from test_pipeline_control import running_state
 from reconstruction import configuration
 from viewer import ReconstructionControl, VolumeHistory, display_voxels, make_handler
 
@@ -242,6 +244,99 @@ class ControlHTTPTests(unittest.TestCase):
             self.assertEqual(state["reconstruction_control_error"], "device unavailable")
         with self.get("/api/volume") as response:
             self.assertEqual(response.status, 200)
+
+
+class PipelineHTTPTests(unittest.TestCase):
+    tearDown = HTTPTests.tearDown
+    get = HTTPTests.get
+
+    def setUp(self):
+        HTTPTests.setUp(self)
+        self.root = Path(self.directory.name)
+        self.pipeline = PipelineControl(self.root)
+        atomic_json(self.pipeline.state_path, running_state())
+        self.server.RequestHandlerClass = make_handler(self.history, self.root,
+                                                       pipeline_control=self.pipeline)
+
+    def post(self, options, **headers):
+        request = urllib.request.Request(self.url + "/api/pipeline", data=json.dumps(options).encode(),
+            headers={"Content-Type": "application/json", **headers})
+        return urllib.request.urlopen(request, timeout=3)
+
+    def test_pending_restart_is_reported_without_changing_active_settings(self):
+        with self.get("/api/pipeline") as response:
+            self.assertEqual(json.load(response)["run_id"], 0)
+        with self.post(dict(transport_batch=16, processing_mode="batched")) as response:
+            state = json.load(response)
+            self.assertEqual(state["requested"]["revision"], 1)
+            self.assertEqual(state["active"]["revision"], 0)
+        with self.get("/api/status") as response:
+            self.assertEqual(json.load(response)["pipeline_control"], state)
+        with self.assertRaises(urllib.error.HTTPError) as result:
+            self.post(dict(network="tcp"))
+        self.assertEqual(result.exception.code, 409)
+        result.exception.close()
+
+    def test_cross_origin_invalid_and_unavailable_controls_are_rejected(self):
+        for options, headers, status in [({"gpu": True}, {}, 400),
+                ({"transport_batch": 17}, {}, 400), ({"unknown": 1}, {}, 400),
+                ({"network": "tcp"}, {"Origin": "http://elsewhere.invalid"}, 403)]:
+            with self.subTest(options=options), self.assertRaises(urllib.error.HTTPError) as result:
+                self.post(options, **headers)
+            self.assertEqual(result.exception.code, status)
+            result.exception.close()
+        self.assertFalse(self.pipeline.request_path.exists())
+        self.server.RequestHandlerClass = make_handler(self.history, self.root)
+        for method in (lambda: self.get("/api/pipeline"), lambda: self.post({"network": "tcp"})):
+            with self.assertRaises(urllib.error.HTTPError) as result:
+                method()
+            self.assertEqual(result.exception.code, 503)
+            result.exception.close()
+
+    def test_stop_and_recommend_routes_use_separate_actions(self):
+        calls = []
+        def recommend(options):
+            calls.append(("recommend", options))
+            return dict(options=dict(running_state()["active"]["options"], receive_budget_mib=8),
+                        information=dict(detector_frame_bytes=1024))
+        def stop():
+            calls.append(("stop",))
+            return dict(running_state(), phase="stopping")
+        self.pipeline.recommend = recommend
+        self.pipeline.stop = stop
+        def post_action(path, body, **headers):
+            request = urllib.request.Request(self.url + path, data=json.dumps(body).encode(),
+                headers={"Content-Type": "application/json", **headers})
+            return urllib.request.urlopen(request, timeout=3)
+        with post_action("/api/pipeline/recommend", {"transport_batch": 16}) as response:
+            self.assertEqual(json.load(response)["options"]["receive_budget_mib"], 8)
+        self.assertFalse(self.pipeline.request_path.exists())
+        for path in ("/api/pipeline/stop", "/api/pipeline/recommend"):
+            with self.assertRaises(urllib.error.HTTPError) as result:
+                post_action(path, {}, Origin="http://elsewhere.invalid")
+            self.assertEqual(result.exception.code, 403)
+            result.exception.close()
+        with self.assertRaises(urllib.error.HTTPError) as result:
+            post_action("/api/pipeline/stop", {"network": "tcp"})
+        self.assertEqual(result.exception.code, 400)
+        result.exception.close()
+        with post_action("/api/pipeline/stop", {}) as response:
+            self.assertEqual(json.load(response)["phase"], "stopping")
+        self.assertEqual(calls, [("recommend", {"transport_batch": 16}), ("stop",)])
+
+    def test_state_failure_is_reported_without_losing_the_volume(self):
+        self.history.append(np.zeros((1, 2, 3)), 40, 0, HEALTH)
+        self.pipeline.state_path.write_text("{")
+        with self.get("/api/status") as response:
+            state = json.load(response)
+            self.assertEqual(state["viewer"]["received_volumes"], 1)
+            self.assertIn("pipeline_control_error", state)
+        with self.get("/api/volume") as response:
+            self.assertEqual(response.status, 200)
+        with self.assertRaises(urllib.error.HTTPError) as result:
+            self.get("/api/pipeline")
+        self.assertEqual(result.exception.code, 503)
+        result.exception.close()
 
 
 if __name__ == "__main__":

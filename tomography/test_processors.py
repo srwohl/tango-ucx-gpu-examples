@@ -28,6 +28,10 @@ class DetectorProcessorTests(unittest.TestCase):
                 return config
 
             def decode(self, compressed, *, out, decompression_config):
+                if isinstance(compressed, list):
+                    for source, destination, size in zip(compressed, out, decompression_config):
+                        self.decode(source, out=destination, decompression_config=size)
+                    return
                 # A byte-configured decoder asks to resize to a byte count.
                 # A typed external array can report fewer elements despite
                 # sufficient backing storage, reproducing the nvCOMP failure.
@@ -107,6 +111,45 @@ class DetectorProcessorTests(unittest.TestCase):
         module = self.load_processor()
         with self.assertRaisesRegex(ValueError, "detector element must be u16 or f32"):
             module.Processor("correct", dict(rows=2, columns=3, element="f64"), 0, 1, 40)
+
+    def test_decoder_batches_calibration_projections_and_partial_tail(self):
+        module = self.load_processor()
+        scan = dict(rows=2, columns=3, angles=4, theta=[0., .1, .2, .3],
+                    max_compressed_bytes=32, element="u16")
+        processor = module.Processor("decompress", scan, 0, 1, 1)
+        pointers, frames, expected = {}, [], []
+        for index in range(6):
+            raw = np.full((2, 3), 20 + index, np.uint16)
+            compressed = np.frombuffer(lz4.block.compress(raw.tobytes(), store_size=False), np.uint8)
+            pointers[index + 1] = compressed
+            pointers[index + 101] = np.empty(raw.nbytes, np.uint8)
+            frames.append((index + 1, compressed.nbytes, index + 101,
+                           index if index < 2 else 2, max(0, index - 2), 0.))
+            expected.append(raw)
+        with patch.object(module, "array_at", side_effect=lambda p, shape, dtype, gpu: pointers[p]):
+            processor.consume_many(frames[:4])
+            processor.consume_many(frames[4:])
+            processor.finish()
+        self.assertEqual(processor.received, 6)
+        self.assertEqual(processor.compressed_batch.shape, (16, 256))
+        self.assertEqual(set(processor.batch_decoding), {2, 4})
+        for index, raw in enumerate(expected):
+            np.testing.assert_array_equal(pointers[index + 101].view(np.uint16).reshape(raw.shape), raw)
+
+    def test_invalid_batch_is_rejected_before_reads_or_counter_changes(self):
+        module = self.load_processor()
+        scan = dict(rows=2, columns=3, angles=2, theta=[0., .1],
+                    max_compressed_bytes=32, element="u16")
+        processor = module.Processor("decompress", scan, 0, 1, 1)
+        valid = (1, 12, 2, 0, 0, 0.)
+        for bad in ((1, 12, 2, 2, 0, 0.), (1, 33, 2, 1, 0, 0.)):
+            with self.subTest(frame=bad), patch.object(module, "array_at") as borrowed:
+                with self.assertRaises(ValueError):
+                    processor.consume_many([valid, bad])
+                borrowed.assert_not_called()
+                self.assertEqual(processor.received, 0)
+        with self.assertRaisesRegex(ValueError, "capacity"):
+            processor.consume_many([valid] * 17)
 
 
 if __name__ == "__main__":

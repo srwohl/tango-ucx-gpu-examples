@@ -270,6 +270,50 @@ class Processor:
                     self.reconstruct(output)
             self.projections += 1
 
+    def consume_many(self, frames):
+        """Consume one ordered, same-scan group; batch only independent LZ4 frames.
+
+        C++ retains input/output allocations through queued stream work. No borrowed
+        arrays are cached here; owned aligned scratch is reused on this same stream.
+        """
+        if not frames:
+            return
+        if len(frames) == 1 or self.role != "decompress":
+            for frame in frames:
+                self.consume(*frame)
+            return
+        if len(frames) > 16:
+            raise ValueError("decompression batch exceeds the supported capacity of 16")
+        # Reject the whole group before queuing reads or changing scan counters.
+        for index, (_, nbytes, _, kind, projection, _) in enumerate(frames):
+            received = self.received + index
+            expected_kind = received if received < 2 else 2
+            expected_projection = max(0, received - 2)
+            if kind != expected_kind or projection != expected_projection:
+                raise ValueError("missing or out-of-order compressed scan frame")
+            if not 0 < nbytes <= self.compressed.nbytes:
+                raise ValueError("compressed length outside the declared capacity")
+            if received >= self.scan["angles"] + 2:
+                raise ValueError("compressed batch extends beyond the scan")
+        with self.stream:
+            if not hasattr(self, "compressed_batch"):
+                stride = ((self.compressed.nbytes + 255) // 256) * 256
+                self.compressed_batch = cp.empty((16, stride), dtype=cp.uint8)
+                self.batch_decoding = {}
+            count = len(frames)
+            if count not in self.batch_decoding:
+                self.batch_decoding[count] = self.codec.decompression_config(
+                    self.codec.compression_config([self.detector_frame_bytes] * count))
+            sources, outputs = [], []
+            for index, (pointer, nbytes, output_pointer, _, _, _) in enumerate(frames):
+                compressed = self.compressed_batch[index, :nbytes]
+                cp.copyto(compressed, array_at(pointer, (nbytes,), cp.uint8, self.gpu))
+                sources.append(nvcomp.as_array(compressed, cuda_stream=self.stream.ptr))
+                outputs.append(array_at(output_pointer, (self.detector_frame_bytes,),
+                                        cp.uint8, self.gpu))
+            self.codec.decode(sources, out=outputs, decompression_config=self.batch_decoding[count])
+            self.received += count
+
     def finish(self):
         if self.role == "decompress" and self.received != self.scan["angles"] + 2:
             raise ValueError("incomplete compressed scan")

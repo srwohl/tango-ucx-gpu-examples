@@ -17,6 +17,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 from network import environment
 from reconstruction import live_configuration
+from pipeline_control import PipelineControl, PipelineConflict
 from output_blocks import LatestCompleted, OutputCollector, read_complete
 
 
@@ -137,7 +138,7 @@ class VolumeHistory:
             self.state.update(values)
 
 
-def make_handler(history, output, control=None):
+def make_handler(history, output, control=None, pipeline_control=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass
@@ -169,8 +170,21 @@ def make_handler(history, output, control=None):
                         progress["reconstruction_control"] = control.settings()
                     except Exception as error:
                         progress["reconstruction_control_error"] = str(error)
+                if pipeline_control is not None:
+                    try:
+                        progress["pipeline_control"] = pipeline_control.settings()
+                    except Exception as error:
+                        progress["pipeline_control_error"] = str(error)
                 self.respond(json.dumps(dict(**progress, viewer=history.snapshot())).encode(),
                              "application/json")
+            elif request.path == "/api/pipeline":
+                if pipeline_control is None:
+                    self.respond(b"Pipeline controls unavailable", "text/plain", 503)
+                    return
+                try:
+                    self.respond(json.dumps(pipeline_control.settings()).encode(), "application/json")
+                except Exception as error:
+                    self.respond(str(error).encode(), "text/plain", 503)
             elif request.path == "/api/reconstruction":
                 if control is None:
                     self.respond(b"Reconstruction controls unavailable", "text/plain", 503)
@@ -210,7 +224,9 @@ def make_handler(history, output, control=None):
                 self.respond(b"Not found", "text/plain", 404)
 
         def do_POST(self):
-            if urlsplit(self.path).path != "/api/reconstruction":
+            path = urlsplit(self.path).path
+            if path not in ("/api/reconstruction", "/api/pipeline",
+                            "/api/pipeline/stop", "/api/pipeline/recommend"):
                 self.respond(b"Not found", "text/plain", 404)
                 return
             # Browser writes must originate from this viewer, including its loopback port.
@@ -218,8 +234,10 @@ def make_handler(history, output, control=None):
             if origin and origin != f"http://{self.headers.get('Host')}":
                 self.respond(b"Origin does not match this viewer", "text/plain", 403)
                 return
-            if control is None:
-                self.respond(b"Reconstruction controls unavailable", "text/plain", 503)
+            selected_control = pipeline_control if path.startswith("/api/pipeline") else control
+            if selected_control is None:
+                self.respond(b"Pipeline controls unavailable" if path.startswith("/api/pipeline") else
+                             b"Reconstruction controls unavailable", "text/plain", 503)
                 return
             try:
                 size = int(self.headers.get("Content-Length", "0"))
@@ -228,8 +246,17 @@ def make_handler(history, output, control=None):
                 if self.headers.get_content_type() != "application/json":
                     raise ValueError("expected application/json")
                 options = json.loads(self.rfile.read(size))
-                state = control.configure(options)
+                if path == "/api/pipeline/stop":
+                    if options != {}:
+                        raise ValueError("stop expects an empty JSON object")
+                    state = selected_control.stop()
+                elif path == "/api/pipeline/recommend":
+                    state = selected_control.recommend(options)
+                else:
+                    state = selected_control.configure(options)
                 self.respond(json.dumps(state).encode(), "application/json")
+            except PipelineConflict as error:
+                self.respond(str(error).encode(), "text/plain", 409)
             except (ValueError, TypeError) as error:
                 self.respond(str(error).encode(), "text/plain", 400)
             except Exception as error:
@@ -241,6 +268,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("device")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--control-dir", type=Path, help="common pipeline restart control directory")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--budget", type=int, default=1048576)
     parser.add_argument("--output-mode", choices=("volume", "blocks"), default="volume")
@@ -330,7 +358,8 @@ def main():
             sub.close()
 
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(history, args.output, control))
+        server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(history, args.output, control,
+                                         PipelineControl(args.control_dir) if args.control_dir else None))
         url = f"http://127.0.0.1:{server.server_port}"
         ready = args.output / "live-ready.tmp"
         ready.write_text(json.dumps(dict(url=url)))

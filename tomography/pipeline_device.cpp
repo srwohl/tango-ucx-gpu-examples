@@ -41,6 +41,8 @@ struct Options {
     std::filesystem::path file;
     Json scan;
     int gpu = 0, delay_ms = 0, iterations = 40, scan_period_ms = 0;
+    int transport_batch = 1, processing_batch = 1;
+    std::string processing_mode = "scalar";
     bool allow_gpu_over_tcp = false;
     std::uint64_t scan_count = 1; // zero: keep the publisher alive until Stop
     std::uint64_t budget = 256ull << 10;
@@ -109,7 +111,9 @@ public:
         PublisherLimits limits;
         // Independent archive and live-view subscriptions join their respective publishers.
         limits.max_sessions = cfg.role == "source" || cfg.role == "reconstruct" ? 2 : 1;
-        limits.budget = std::max<std::uint64_t>(cfg.budget, bytes * 8 + (192ull << 10));
+        const auto output_margin = cfg.role == "decompress" ?
+            std::max(8, 2 * cfg.processing_batch) : 8;
+        limits.budget = std::max<std::uint64_t>(cfg.budget, bytes * output_margin + (192ull << 10));
         publisher_budget = limits.budget;
         output_payload_bytes = bytes;
         limits.allow_every = true;
@@ -137,7 +141,7 @@ public:
             SubscriptionOptions receive;
             receive.gpu = cfg.gpu;
             receive.budget = cfg.budget;
-            receive.batch = 1;
+            receive.batch = cfg.transport_batch;
             receive.allow_gpu_over_tcp = cfg.allow_gpu_over_tcp;
             receive.label = "tomography-" + cfg.role;
             input = std::make_unique<Subscription>(every(*proxy, receive));
@@ -193,6 +197,8 @@ public:
         std::lock_guard guard(commands);
         const auto h = publisher->health();
         return Json{{"role", cfg.role}, {"processed", processed.load()},
+                    {"transport_batch", cfg.transport_batch}, {"processing_batch", cfg.processing_batch},
+                    {"processing_mode", cfg.processing_mode},
                     {"completed_scans", completed_scans.load()},
                     {"published", published.load()}, {"pressure", h.pressure},
                     {"slot_wait_ns", slot_wait_ns.load()},
@@ -308,96 +314,144 @@ private:
                             if(input->outcome()) throw std::runtime_error("upstream ended without End");
                             continue;
                         }
-                        if(batch->frames() != 1 || batch->index(0) != processed.load())
-                            throw std::runtime_error("missing or out-of-order upstream frame");
-                        Fields fields{};
-                        std::uint64_t timestamp = 0;
-                        // Public record layout: index, timestamp, application fields.
-                        auto records = static_cast<const std::byte *>(batch->records());
-                        std::memcpy(&timestamp, records + 8, 8);
-                        std::memcpy(&fields, records + 16, sizeof(fields));
-                        if(fields.scan_id != current_scan) {
-                            if(current_scan) processor.attr("finish")();
-                            if(fields.scan_id != cfg.scan.at("scan_id").get<std::uint64_t>() +
-                                   completed_scans.load() || fields.projection != 0 ||
-                               fields.kind != (cfg.role == "reconstruct" ? 2 : 0) ||
-                               fields.calibration_id != cfg.scan.at("calibration_id").get<std::uint64_t>() +
-                                   completed_scans.load())
-                                throw std::runtime_error("missing scan boundary or calibration");
-                            processor.attr("begin_scan")();
-                            if(cfg.role == "reconstruct") {
-                                Json options;
-                                {
-                                    std::lock_guard guard(commands);
-                                    options = reconstruction->begin_scan(fields.scan_id);
-                                    settings_revision = reconstruction->for_scan(fields.scan_id).at("revision");
+                        struct Frame { Fields fields{}; std::uint64_t timestamp = 0; };
+                        std::vector<Frame> frames(batch->frames());
+                        // Public records have two uint64s followed by our 40-byte fields.
+                        const auto records = static_cast<const std::byte *>(batch->records());
+                        for(std::size_t i = 0; i < frames.size(); ++i) {
+                            if(batch->index(i) != processed.load() + i)
+                                throw std::runtime_error("missing or out-of-order upstream frame");
+                            const auto record = records + i * (16 + sizeof(Fields));
+                            std::memcpy(&frames[i].timestamp, record + 8, 8);
+                            std::memcpy(&frames[i].fields, record + 16, sizeof(Fields));
+                        }
+                        auto begin_frame = [&](const Fields &fields) {
+                            if(fields.scan_id != current_scan) {
+                                if(current_scan) processor.attr("finish")();
+                                if(fields.scan_id != cfg.scan.at("scan_id").get<std::uint64_t>() +
+                                       completed_scans.load() || fields.projection != 0 ||
+                                   fields.kind != (cfg.role == "reconstruct" ? 2 : 0) ||
+                                   fields.calibration_id != cfg.scan.at("calibration_id").get<std::uint64_t>() +
+                                       completed_scans.load())
+                                    throw std::runtime_error("missing scan boundary or calibration");
+                                processor.attr("begin_scan")();
+                                if(cfg.role == "reconstruct") {
+                                    Json options;
+                                    {
+                                        std::lock_guard guard(commands);
+                                        options = reconstruction->begin_scan(fields.scan_id);
+                                        settings_revision = reconstruction->for_scan(fields.scan_id).at("revision");
+                                    }
+                                    block_rows = std::min(options.value("slices_per_block", std::uint64_t(0)),
+                                                          cfg.scan.at("rows").get<std::uint64_t>());
+                                    processor.attr("configure_reconstruction")(
+                                        py::module_::import("json").attr("loads")(options.dump()));
                                 }
-                                block_rows = std::min(options.value("slices_per_block", std::uint64_t(0)),
-                                                      cfg.scan.at("rows").get<std::uint64_t>());
-                                processor.attr("configure_reconstruction")(
-                                    py::module_::import("json").attr("loads")(options.dump()));
+                                current_scan = fields.scan_id;
+                                calibration = fields.calibration_id;
                             }
-                            current_scan = fields.scan_id;
-                            calibration = fields.calibration_id;
-                        }
-                        if(fields.calibration_id != calibration)
-                            throw std::runtime_error("calibration changed within a scan");
+                            if(fields.calibration_id != calibration)
+                                throw std::runtime_error("calibration changed within a scan");
+                        };
+                        auto complete_frame = [&](const Fields &fields) {
+                            ++processed;
+                            if(fields.kind == 2 && fields.projection + 1 ==
+                               cfg.scan.at("angles").get<std::uint64_t>()) {
+                                processor.attr("finish")();
+                                ++completed_scans;
+                            }
+                        };
                         auto view = std::move(*batch).gpu_view(GpuStream{stream});
-                        if(cfg.delay_ms) {
-                            py::gil_scoped_release release;
-                            std::this_thread::sleep_for(std::chrono::milliseconds(cfg.delay_ms));
-                        }
-                        const bool emits = cfg.role == "decompress" ||
-                            (cfg.role == "correct" && fields.kind == 2) ||
-                            (cfg.role == "reconstruct" && !block_output && fields.projection + 1 ==
-                                cfg.scan.at("angles").get<std::uint64_t>());
-                        std::optional<Slot> output;
-                        void *destination = nullptr;
-                        if(emits) {
-                            {
-                                py::gil_scoped_release release;
-                                output.emplace(acquire(stop));
+                        for(std::size_t frame = 0; frame < frames.size();) {
+                            const auto &fields = frames[frame].fields;
+                            const auto timestamp = frames[frame].timestamp;
+                            begin_frame(fields);
+                            if(cfg.role == "decompress" && cfg.processing_mode == "batched") {
+                                auto end = std::min(frames.size(), frame + cfg.processing_batch);
+                                for(auto i = frame + 1; i < end; ++i)
+                                    if(frames[i].fields.scan_id != fields.scan_id) { end = i; break; }
+                                if(end - frame > 1) {
+                                    std::vector<Slot> outputs;
+                                    outputs.reserve(end - frame);
+                                    py::list arguments;
+                                    for(auto i = frame; i < end; ++i) {
+                                        if(frames[i].fields.calibration_id != calibration)
+                                            throw std::runtime_error("calibration changed within a scan");
+                                        {
+                                            py::gil_scoped_release release;
+                                            outputs.emplace_back(acquire(stop));
+                                        }
+                                        auto &slot = outputs.back();
+                                        auto destination = slot.gpu_payload(GpuStream{stream});
+                                        std::memcpy(slot.fields().data(), &frames[i].fields, sizeof(Fields));
+                                        arguments.append(py::make_tuple(
+                                            reinterpret_cast<std::uintptr_t>(view.payload(i)), view.payload_bytes(i),
+                                            reinterpret_cast<std::uintptr_t>(destination), frames[i].fields.kind,
+                                            frames[i].fields.projection, frames[i].fields.theta));
+                                    }
+                                    processor.attr("consume_many")(arguments);
+                                    if(end == frames.size()) view = GpuView{};
+                                    for(auto i = frame; i < end; ++i) {
+                                        std::move(outputs[i - frame]).publish(frames[i].timestamp);
+                                        ++published;
+                                        complete_frame(frames[i].fields);
+                                    }
+                                    frame = end;
+                                    continue;
+                                }
                             }
-                            destination = output->gpu_payload(GpuStream{stream});
-                            std::memcpy(output->fields().data(), &fields, sizeof(fields));
-                        }
-                        processor.attr("consume")(
-                            reinterpret_cast<std::uintptr_t>(view.payload(0)), view.payload_bytes(0),
-                            reinterpret_cast<std::uintptr_t>(destination),
-                            fields.kind, fields.projection, fields.theta);
-                        // End the borrowed receive hold after its last queued read,
-                        // before potentially waiting for many output block credits.
-                        view = GpuView{};
-                        if(block_output && fields.projection + 1 == cfg.scan.at("angles").get<std::uint64_t>()) {
-                            const auto rows = cfg.scan.at("rows").get<std::uint64_t>();
-                            if(!block_rows || block_rows > output_rows)
-                                throw std::runtime_error("reconstruction block exceeds fixed output capacity");
-                            for(std::uint64_t begin = 0; begin < rows; begin += block_rows) {
-                                const auto count = std::min(block_rows, rows - begin);
-                                auto slot = [&] {
+                            if(cfg.delay_ms) {
+                                py::gil_scoped_release release;
+                                std::this_thread::sleep_for(std::chrono::milliseconds(cfg.delay_ms));
+                            }
+                            const bool emits = cfg.role == "decompress" ||
+                                (cfg.role == "correct" && fields.kind == 2) ||
+                                (cfg.role == "reconstruct" && !block_output && fields.projection + 1 ==
+                                    cfg.scan.at("angles").get<std::uint64_t>());
+                            std::optional<Slot> output;
+                            void *destination = nullptr;
+                            if(emits) {
+                                {
                                     py::gil_scoped_release release;
-                                    return acquire(stop);
-                                }();
-                                auto pointer = slot.gpu_payload(GpuStream{stream});
-                                processor.attr("reconstruct_block")(
-                                    reinterpret_cast<std::uintptr_t>(pointer), begin, count);
-                                BlockFields block_fields{fields, settings_revision, begin, count};
-                                std::memcpy(slot.fields().data(), &block_fields, sizeof(block_fields));
-                                std::move(slot).publish(timestamp);
+                                    output.emplace(acquire(stop));
+                                }
+                                destination = output->gpu_payload(GpuStream{stream});
+                                std::memcpy(output->fields().data(), &fields, sizeof(fields));
+                            }
+                            processor.attr("consume")(
+                                reinterpret_cast<std::uintptr_t>(view.payload(frame)), view.payload_bytes(frame),
+                                reinterpret_cast<std::uintptr_t>(destination),
+                                fields.kind, fields.projection, fields.theta);
+                            // One receive view owns the whole transport batch. Release after
+                            // its last queued read, before final-frame output credit waits.
+                            if(frame + 1 == frames.size()) view = GpuView{};
+                            if(block_output && fields.projection + 1 == cfg.scan.at("angles").get<std::uint64_t>()) {
+                                const auto rows = cfg.scan.at("rows").get<std::uint64_t>();
+                                if(!block_rows || block_rows > output_rows)
+                                    throw std::runtime_error("reconstruction block exceeds fixed output capacity");
+                                for(std::uint64_t begin = 0; begin < rows; begin += block_rows) {
+                                    const auto count = std::min(block_rows, rows - begin);
+                                    auto slot = [&] {
+                                        py::gil_scoped_release release;
+                                        return acquire(stop);
+                                    }();
+                                    auto pointer = slot.gpu_payload(GpuStream{stream});
+                                    processor.attr("reconstruct_block")(
+                                        reinterpret_cast<std::uintptr_t>(pointer), begin, count);
+                                    BlockFields block_fields{fields, settings_revision, begin, count};
+                                    std::memcpy(slot.fields().data(), &block_fields, sizeof(block_fields));
+                                    std::move(slot).publish(timestamp);
+                                    ++published;
+                                }
+                            }
+                            // Receive completion follows the last queued read. Publication separately
+                            // follows the writes to this GPU source slot on the same CUDA stream.
+                            if(output) {
+                                std::move(*output).publish(timestamp);
                                 ++published;
                             }
-                        }
-                        // Receive completion follows the last queued read. Publication separately
-                        // follows the writes to this GPU source slot on the same CUDA stream.
-                        if(output) {
-                            std::move(*output).publish(timestamp);
-                            ++published;
-                        }
-                        ++processed;
-                        if(fields.kind == 2 && fields.projection + 1 ==
-                           cfg.scan.at("angles").get<std::uint64_t>()) {
-                            processor.attr("finish")();
-                            ++completed_scans;
+                            complete_frame(fields);
+                            ++frame;
                         }
                     }
                     if(!stop.stop_requested()) processor.attr("finish")();
@@ -504,6 +558,9 @@ int main(int argc, char **argv) {
                     cfg.allow_gpu_over_tcp = value == "1";
                 }
                 else if(arg == "--budget") cfg.budget = std::stoull(argv[i]);
+                else if(arg == "--transport-batch") cfg.transport_batch = std::stoi(argv[i]);
+                else if(arg == "--processing-batch") cfg.processing_batch = std::stoi(argv[i]);
+                else if(arg == "--processing-mode") cfg.processing_mode = argv[i];
                 else if(arg == "--delay-ms") cfg.delay_ms = std::stoi(argv[i]);
                 else if(arg == "--iterations") cfg.iterations = std::stoi(argv[i]);
                 else if(arg == "--scans") cfg.scan_count = std::stoull(argv[i]);
@@ -514,6 +571,11 @@ int main(int argc, char **argv) {
         if(cfg.role != "source" && cfg.role != "decompress" &&
            cfg.role != "correct" && cfg.role != "reconstruct")
             throw std::runtime_error("--role needs source, decompress, correct or reconstruct");
+        if(cfg.transport_batch < 1 || cfg.transport_batch > 16 ||
+           cfg.processing_batch < 1 || cfg.processing_batch > 16)
+            throw std::runtime_error("transport and processing batch sizes must be 1 to 16");
+        if(cfg.processing_mode != "scalar" && cfg.processing_mode != "batched")
+            throw std::runtime_error("--processing-mode needs scalar or batched");
         std::ifstream scan(cfg.file);
         scan >> cfg.scan;
         const auto element = cfg.scan.value("element", "u16");

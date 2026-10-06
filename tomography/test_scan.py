@@ -10,7 +10,7 @@ import h5py
 import lz4.block
 import numpy as np
 
-from demo import parse_args, streaming_rates, workload_description
+from demo import parse_args, reconstruction_options, streaming_rates, workload_description
 from scan import from_hdf5, hdf5_dimensions, selection
 
 
@@ -146,7 +146,7 @@ class HDF5ScanTests(unittest.TestCase):
             corrected = -np.log(np.clip((raw[1:5:2, 1:4:2, :].astype(np.float64) - 12) / 389, 1e-6, 1))
             np.testing.assert_array_equal(reference["sinogram"], corrected.transpose(1, 0, 2).astype(np.float32))
         args = parse_args(["--hdf5", str(self.file), "--sino", "1:4:2", "--proj", "1:5:2"])
-        meta["reconstruction"] = dict(iterations=40)
+        meta["reconstruction"] = reconstruction_options(args)
         workload = workload_description(args, meta)
         self.assertEqual(workload["detector_element"], "f32")
         self.assertEqual(workload["detector_frame_bytes"], 48)

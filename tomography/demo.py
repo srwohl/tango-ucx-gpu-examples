@@ -1,5 +1,6 @@
 """Four real Tango device servers, a concurrent compressed archive, and a volume writer."""
 import argparse
+import copy
 from contextlib import ExitStack
 import json
 import os
@@ -21,6 +22,7 @@ from scan import from_hdf5, generate, hdf5_dimensions, selection
 from reconstruction import ALGORITHMS, FILTERS, configuration, reference_reconstruction
 from host_buffering import memory_plan
 from output_blocks import OutputCollector, read_complete
+from pipeline_control import atomic_json, validate_options
 
 DEFAULT_WORKLOAD = dict(pixels=64, slices=8, angles=96, budget=262144, scan_period=1)
 STRESS_WORKLOAD = dict(pixels=128, slices=32, angles=360, budget=8388608, scan_period=0)
@@ -43,6 +45,9 @@ def device_command(args, role, output, port, name, devices):
                "--role", role, "--scan", str(output / "scan" / "scan.json"),
                "--gpu", str(gpu), "--budget", str(args.budget),
                "--allow-gpu-over-tcp", "0" if args.network == "rdma" else "1",
+               "--transport-batch", str(args.transport_batch),
+               "--processing-batch", str(args.processing_batch),
+               "--processing-mode", args.processing_mode,
                "--iterations", str(args.iterations), "--scans", str(args.scans),
                "--scan-period-ms", str(round(args.scan_period * 1000))]
     if role != "source":
@@ -159,6 +164,9 @@ def run(args, output, stop_requested, env):
                                net_devices=env.get("TANGO_UCX_UCX_NET_DEVICES",
                                                    env.get("UCX_NET_DEVICES", "all")),
                                allow_gpu_over_tcp=args.network != "rdma")
+    workload["processing"] = dict(transport_batch=args.transport_batch,
+                                   processing_batch=args.processing_batch,
+                                   processing_mode=args.processing_mode)
     with np.load(output / "scan" / "reference.npz") as reference:
         truth = reference["phantom"] if "phantom" in reference else None
         expected_volume = reference_reconstruction(
@@ -229,15 +237,17 @@ def run(args, output, stop_requested, env):
             live_url = None
             if args.live:
                 live_log = cleanup.enter_context((output / "live.log").open("w"))
-                viewer = subprocess.Popen(
-                    [sys.executable, str(ROOT / "tomography" / "viewer.py"), devices["reconstruct"],
+                viewer_command = [sys.executable, str(ROOT / "tomography" / "viewer.py"), devices["reconstruct"],
                      "--output", str(output), "--port", str(args.view_port),
                      "--budget", str(max(args.budget, memory_plan(scan, scan["reconstruction"])["gpu_output_bytes"] * 4 + 131072)),
                      "--output-mode", args.output_mode,
                      "--delay", str(args.viewer_delay),
                      "--history-volumes", str(args.view_history_volumes),
                      "--history-mib", str(args.view_history_mib),
-                     "--display-max", str(args.display_max)], env=env, stdout=live_log, stderr=live_log,
+                     "--display-max", str(args.display_max)]
+                if getattr(args, "_control_dir", None) is not None:
+                    viewer_command.extend(["--control-dir", str(args._control_dir)])
+                viewer = subprocess.Popen(viewer_command, env=env, stdout=live_log, stderr=live_log,
                     start_new_session=True)
                 cleanup.callback(stop, viewer)
                 until = time.monotonic() + 30
@@ -251,12 +261,23 @@ def run(args, output, stop_requested, env):
                     webbrowser.open(live_url)
             for role in ("reconstruct", "correct", "decompress", "source"):
                 proxies[role].command_inout("Start")
+            if getattr(args, "_control_dir", None) is not None:
+                state_path = args._control_dir / "pipeline-control.json"
+                state = json.loads(state_path.read_text())
+                state.update(active=dict(options=pipeline_options(args),
+                                         revision=state["requested"]["revision"]),
+                             phase="running", run_output=str(output),
+                             fixed_geometry=bool(args.hdf5),
+                             workload=workload,
+                             gpu_count=cp.cuda.runtime.getDeviceCount())
+                atomic_json(state_path, state)
             started = last_volume = time.monotonic()
             reconstruction = None
             completed = 0
             draining = False
             reports = {}
             error = None
+            restart_plan = None
 
             def publish_status(phase, elapsed=None):
                 try:
@@ -290,7 +311,30 @@ def run(args, output, stop_requested, env):
                 return batch.array[0].copy()
 
             while True:
-                if stop_requested.is_set() and not draining:
+                control_dir = getattr(args, "_control_dir", None)
+                if control_dir is not None and (control_dir / "pipeline-stop.json").exists():
+                    stop_requested.set()
+                    restart_plan = None
+                    (control_dir / "pipeline-request.json").unlink(missing_ok=True)
+                if not draining and getattr(args, "_control_dir", None) is not None:
+                    request_path = args._control_dir / "pipeline-request.json"
+                    if request_path.exists() and not stop_requested.is_set():
+                        state_path = args._control_dir / "pipeline-control.json"
+                        state = json.loads(state_path.read_text())
+                        try:
+                            request = json.loads(request_path.read_text())
+                            settings = json.loads(proxies["reconstruct"].command_inout("GetReconstruction"))
+                            restart_plan = pipeline_args(args, request["options"],
+                                                         settings["requested"]["options"])
+                            state.update(requested=request, phase="restarting", error=None)
+                            atomic_json(state_path, state)
+                        except FileNotFoundError:
+                            pass  # A concurrent Stop cancels a queued restart.
+                        except (ValueError, TypeError, OverflowError) as invalid:
+                            state.update(requested=state["active"], phase="running", error=str(invalid))
+                            atomic_json(state_path, state)
+                            request_path.unlink(missing_ok=True)
+                if (stop_requested.is_set() or restart_plan is not None) and not draining:
                     proxies["source"].command_inout("Stop")
                     draining = True
                     print("Finishing acquisition and draining the pipeline…", flush=True)
@@ -364,6 +408,11 @@ def run(args, output, stop_requested, env):
                     raise ValueError(f"{role} scan counts differ: {reports[role]}")
             archived_count = verify_archive(output, scan, completed)
             publish_status("finished", elapsed)
+            if control_dir is not None and (control_dir / "pipeline-stop.json").exists():
+                state_path = control_dir / "pipeline-control.json"
+                state = json.loads(state_path.read_text())
+                state.update(phase="finished", requested=state.get("active"), error=None)
+                atomic_json(state_path, state)
             live_report = None
             if args.live:
                 until = time.monotonic() + max(20, args.viewer_delay * (completed+1))
@@ -411,6 +460,8 @@ def run(args, output, stop_requested, env):
                            output=str(output))
             (output / "summary.json").write_text(json.dumps(summary, indent=2))
             print(json.dumps(summary, indent=2), flush=True)
+            summary["_restart_plan"] = restart_plan
+            return summary
         except BaseException:
             for role, path in {**logs, "archive": output / "archive.log", "live": output / "live.log"}.items():
                 if path.exists():
@@ -424,6 +475,52 @@ def reconstruction_options(args):
                          max_constraint=args.max_constraint, filter_cutoff=args.filter_cutoff,
                          center=args.center, gaussian_fwhm=args.gaussian_fwhm,
                          scale_factor=args.scale_factor, slices_per_block=args.slices_per_block)
+
+
+def pipeline_options(args):
+    keys = ("network", "net_devices", "transport_batch", "processing_batch", "processing_mode",
+            "sinogram_memory", "host_buffer_mib", "pinned_buffer_mib", "output_mode",
+            "output_host_mib", "gpu", "decompress_gpu", "correct_gpu", "reconstruct_gpu", "scan_period",
+            "pixels", "slices", "angles")
+    return dict({key: getattr(args, key) for key in keys}, receive_budget_mib=args.budget / 1024**2)
+
+
+def pipeline_args(args, options, reconstruction=None):
+    """Validate a prospective restart before interrupting the working acquisition."""
+    options = validate_options(options)
+    if args.hdf5 and any(options.get(key, getattr(args, key)) != getattr(args, key)
+                         for key in ("pixels", "slices", "angles")):
+        raise ValueError("HDF5 detector dimensions come from the selected file")
+    result = copy.copy(args)
+    for key, value in options.items():
+        if key == "receive_budget_mib":
+            result.budget = int(value * 1024**2)
+        else:
+            setattr(result, key, value)
+    if reconstruction is not None:
+        result.algorithm = reconstruction["algorithm"]
+        for key, attr in (("filter", "recon_filter"), ("threads", "recon_threads"),
+                          ("iterations", "iterations"), ("relaxation", "relaxation"),
+                          ("min_constraint", "min_constraint"), ("max_constraint", "max_constraint"),
+                          ("filter_cutoff", "filter_cutoff"), ("center", "center"),
+                          ("gaussian_fwhm", "gaussian_fwhm"), ("scale_factor", "scale_factor"),
+                          ("slices_per_block", "slices_per_block")):
+            if reconstruction.get(key) is not None or key in ("max_constraint", "filter_cutoff", "center"):
+                setattr(result, attr, reconstruction[key])
+    if result.output_mode == "blocks" and not result.slices_per_block:
+        result.slices_per_block = result.slices
+    recon = reconstruction_options(result)
+    memory_plan(dict(rows=result.slices, columns=result.pixels, angles=result.angles,
+                     buffering=buffering_options(result)), recon)
+    if result.live and result.slices * result.pixels**2 > result.view_history_mib * 1024**2:
+        raise ValueError("display volume exceeds the viewer history byte limit")
+    if result.live and result.output_mode == "blocks" and result.slices * result.pixels**2 * 12 > result.output_host_mib * 1024**2:
+        raise ValueError("block viewer requires host capacity for three float volumes")
+    # Leave room for UCX bookkeeping as well as two complete fixed-size batches.
+    minimum = (128 << 10) + 2 * result.transport_batch * (result.slices * result.pixels * 4 + 2048)
+    if result.budget < minimum:
+        raise ValueError(f"receive budget is too small for these batches; use at least {minimum / 1024**2:.3f} MiB")
+    return result
 
 
 def buffering_options(args, scan=None):
@@ -520,6 +617,12 @@ def parse_args(argv=None):
     parser.add_argument("--network", "--profile", choices=("tcp", "rdma", "auto"), default="tcp",
                         help="UCX profile: local TCP, RC/CUDA without TCP fallback, or automatic selection")
     parser.add_argument("--net-devices", help="UCX interface or HCA:port; TCP defaults to lo, others to UCX selection")
+    parser.add_argument("--transport-batch", type=int, choices=range(1, 17), default=1,
+                        help="maximum frames per UCX receive batch")
+    parser.add_argument("--processing-batch", type=int, choices=range(1, 17), default=1,
+                        help="maximum frames per batched decompression call")
+    parser.add_argument("--processing-mode", choices=("scalar", "batched"), default="scalar",
+                        help="scalar calls or nvCOMP batch decompression")
     parser.add_argument("--budget", type=int, help="receive budget in bytes (default 262144)")
     parser.add_argument("--correction-delay-ms", type=int, default=0)
     mode = parser.add_mutually_exclusive_group()
@@ -593,18 +696,97 @@ def main():
         stop_requested.set()
     signal.signal(signal.SIGINT, finish_acquisition)
     signal.signal(signal.SIGTERM, finish_acquisition)
-    env = launch_environment(args)
-    os.environ.update(env)
-    for location in env["PYTHONPATH"].split(":"):
-        if location:
-            sys.path.insert(0, location)
+    inherited_devices = {key: os.environ.get(key) for key in
+                         ("UCX_NET_DEVICES", "TANGO_UCX_UCX_NET_DEVICES")}
+
+    def supervise(root):
+        current = args
+        previous = None
+        run_id = 0
+        if current.live:
+            current._control_dir = root
+            if current.view_port == 0:
+                current.view_port = free_port()
+            atomic_json(root / "pipeline-control.json", dict(
+                requested=dict(options=pipeline_options(current), revision=0),
+                active=None, phase="restarting", run_id=run_id,
+                run_output=str(root), error=None))
+        while True:
+            if current.live and (root / "pipeline-stop.json").exists():
+                stop_requested.set()
+                (root / "pipeline-request.json").unlink(missing_ok=True)
+            if stop_requested.is_set() and run_id:
+                state_path = root / "pipeline-control.json"
+                state = json.loads(state_path.read_text())
+                state.update(phase="finished", requested=state.get("active"))
+                atomic_json(state_path, state)
+                break
+            output = root if run_id == 0 else root / f"run-{run_id:04d}"
+            if run_id:
+                output.mkdir()
+            for key, value in inherited_devices.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+            env = launch_environment(current)
+            os.environ.update(env)
+            for location in env["PYTHONPATH"].split(":"):
+                if location and location not in sys.path:
+                    sys.path.insert(0, location)
+            try:
+                result = run(current, output, stop_requested, env)
+            except Exception as failure:
+                if not current.live:
+                    raise
+                state_path = root / "pipeline-control.json"
+                state = json.loads(state_path.read_text())
+                if (root / "pipeline-stop.json").exists():
+                    stop_requested.set()
+                if stop_requested.is_set():
+                    state.update(phase="finished", requested=state.get("active"))
+                    atomic_json(state_path, state)
+                    break
+                if previous is None or stop_requested.is_set():
+                    state.update(phase="failed", error=str(failure))
+                    atomic_json(state_path, state)
+                    raise
+                # Recover the last working settings if a new transport cannot start.
+                current, previous = previous, None
+                run_id += 1
+                state.update(phase="restarting", error=f"Restart failed; restoring previous settings: {failure}",
+                             requested=dict(options=pipeline_options(current),
+                                            revision=state["requested"]["revision"] + 1), run_id=run_id)
+                atomic_json(state_path, state)
+                continue
+            next_args = result.get("_restart_plan")
+            if current.live and (root / "pipeline-stop.json").exists():
+                stop_requested.set()
+                next_args = None
+            if next_args is None or stop_requested.is_set():
+                if current.live:
+                    state_path = root / "pipeline-control.json"
+                    state = json.loads(state_path.read_text())
+                    state.update(phase="finished")
+                    atomic_json(state_path, state)
+                break
+            previous, current = current, next_args
+            current.no_browser = True
+            run_id += 1
+            state_path = root / "pipeline-control.json"
+            state = json.loads(state_path.read_text())
+            state.update(phase="restarting", run_id=run_id,
+                         run_output=str(root / f"run-{run_id:04d}"))
+            atomic_json(state_path, state)
+            (root / "pipeline-request.json").unlink(missing_ok=True)
+
     if args.output:
         output = args.output.resolve()
         output.mkdir(parents=True)
-        run(args, output, stop_requested, env)
+        supervise(output)
     else:
         with tempfile.TemporaryDirectory(prefix="tango-ucx-tomography-") as temporary:
-            run(args, Path(temporary), stop_requested, env)
+            supervise(Path(temporary))
 
 
 if __name__ == "__main__":

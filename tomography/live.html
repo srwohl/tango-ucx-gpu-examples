@@ -41,6 +41,9 @@
   .reconstruction-settings h2{margin-bottom:8px}.reconstruction-settings fieldset{border:0;padding:0;margin:16px 0;display:flex;flex-wrap:wrap;gap:16px}
   .reconstruction-settings label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#a9bdcc}
   .reconstruction-settings input{font:inherit;color:#e4edf5;background:#20313e;border:1px solid #3c5363;border-radius:7px;padding:8px;width:150px}
+  #pipeline-fields details{width:100%}#pipeline-advanced-fields{display:flex;flex-wrap:wrap;gap:16px;padding-top:16px}
+  .pipeline-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  #pipeline-stop{border-color:#c96b6b;background:#452a2b}#pipeline-image-info{margin:12px 0}
   .reconstruction-settings .error{color:#ff8b89}#recon-status{margin-top:10px}
   @media(max-width:900px){body{padding:20px}.pipeline,.foot{grid-template-columns:repeat(2,1fr)}.viewport{height:380px}}
   @media(max-width:540px){body{padding:12px}body>header{align-items:flex-start;gap:10px}h1{font-size:22px}.stage{padding:12px}.viewport{height:320px}.timeline{flex-wrap:wrap;gap:8px}#buffer{margin-left:0;width:100%}.hint{font-size:10px}}
@@ -49,13 +52,24 @@
 <body>
 <header>
   <div><h1>Live GPU tomography</h1><p>Compressed acquisition · GPU reconstruction · concurrent archival</p></div>
-  <div class="badge"><span id="dot" class="dot"></span><span id="phase">Connecting</span></div>
+  <div class="badge"><span id="dot" class="dot"></span><span id="phase">Connecting</span><button id="pipeline-stop" type="button" disabled>Stop acquisition</button></div>
 </header>
 <section class="pipeline" aria-label="Pipeline progress">
   <div class="stage" data-role="source"><div class="eyebrow">01 / Compressed input</div><strong>0</strong><div class="small">frames published</div><p class="small detail">Waiting</p></div>
   <div class="stage" data-role="decompress"><div class="eyebrow">02 / GPU decompress</div><strong>0</strong><div class="small">frames decoded</div><p class="small detail">Waiting</p></div>
   <div class="stage" data-role="correct"><div class="eyebrow">03 / GPU correct</div><strong>0</strong><div class="small">projections corrected</div><p class="small detail">Waiting</p></div>
   <div class="stage" data-role="reconstruct"><div class="eyebrow">04 / GPU reconstruct</div><strong>0</strong><div class="small">volumes reconstructed</div><p class="small detail">Waiting</p></div>
+</section>
+<section class="reconstruction-settings" aria-label="Pipeline performance settings">
+  <h2>Acquisition settings</h2>
+  <p id="pipeline-image-info" class="small">Waiting for current image information.</p>
+  <div class="pipeline-actions"><button id="pipeline-current" type="button" disabled>Load current settings</button><button id="pipeline-auto-buffers" type="button" disabled>Size buffers for this scan</button></div>
+  <p class="small">Apply finishes the current scan, drains processing and archival, and restarts all stages on this page’s URL. A new run starts with a fresh volume buffer. Batched processing applies to decompression only.</p>
+  <form id="pipeline-form">
+    <fieldset id="pipeline-fields" disabled aria-label="Pipeline performance parameters"><details id="pipeline-advanced"><summary>Advanced settings</summary><div id="pipeline-advanced-fields"></div></details></fieldset>
+    <button id="pipeline-apply" type="submit" disabled>Restart after current scan</button>
+    <p id="pipeline-status" class="small" role="status">Connecting to pipeline controls…</p>
+  </form>
 </section>
 <section class="reconstruction-settings" aria-label="Reconstruction settings">
   <h2>Reconstruction settings</h2>
@@ -129,6 +143,164 @@
 const $ = selector => document.querySelector(selector);
 const bytes = n => n < 1048576 ? `${(n/1024).toFixed(1)} KiB` : `${(n/1048576).toFixed(1)} MiB`;
 const timeLabel = frame => `+${frame.time_seconds.toFixed(1)} s`;
+let pipelineState=null, pipelineDirty=false, pipelineSaving=false, pipelineRecommending=false, pipelineStopping=false, pipelineStopWaiting=false, pipelineStopRequested=false, pipelineError='', pipelineNotice='', viewerRunID=null;
+const pipelineFields={
+  pixels:{label:'Detector width (pixels)',type:'number',min:1,step:1},
+  slices:{label:'Detector slices',type:'number',min:1,step:1},
+  angles:{label:'Projections per volume',type:'number',min:1,step:1},
+  network:{label:'Network',choices:['tcp','auto','rdma']},
+  net_devices:{label:'Network devices (blank = automatic)',type:'text'},
+  transport_batch:{label:'Transport frames per batch',type:'number',min:1,max:16,step:1},
+  processing_batch:{label:'Decompression frames per batch',type:'number',min:1,max:16,step:1},
+  processing_mode:{label:'Decompression mode',choices:['scalar','batched']},
+  sinogram_memory:{label:'Sinogram memory',choices:['gpu','host']},
+  receive_budget_mib:{label:'Receive budget (MiB)',type:'number',min:0,step:'any'},
+  host_buffer_mib:{label:'Host input buffer (MiB)',type:'number',min:1,step:1},
+  pinned_buffer_mib:{label:'Pinned staging buffer (MiB)',type:'number',min:1,step:1},
+  output_mode:{label:'Output delivery',choices:['volume','blocks']},
+  output_host_mib:{label:'Host output buffer (MiB)',type:'number',min:1,step:1},
+  gpu:{label:'Source GPU',type:'number',min:0,step:1},
+  decompress_gpu:{label:'Decompression GPU',type:'number',min:0,step:1},
+  correct_gpu:{label:'Correction GPU',type:'number',min:0,step:1},
+  reconstruct_gpu:{label:'Reconstruction GPU',type:'number',min:0,step:1},
+  scan_period:{label:'Minimum scan period (seconds)',type:'number',min:0,step:'any'}
+};
+for(const [key,spec] of Object.entries(pipelineFields)){
+  const label=document.createElement('label');label.append(document.createTextNode(spec.label));
+  const input=document.createElement(spec.choices?'select':'input');input.id=`pipeline-${key}`;
+  if(spec.choices){
+    for(const value of spec.choices){const option=document.createElement('option');option.value=value;option.textContent=value;input.append(option);}
+    input.value='';
+  }else{
+    input.type=spec.type;
+    for(const property of ['min','max','step'])if(spec[property]!=null)input[property]=spec[property];
+  }
+  input.required=key!=='net_devices';label.append(input);
+  if(['transport_batch','processing_batch','processing_mode'].includes(key))$('#pipeline-fields').insertBefore(label,$('#pipeline-advanced'));
+  else $('#pipeline-advanced-fields').append(label);
+}
+function pipelineTransitionPending(){
+  return pipelineState && (pipelineState.phase!=='running' || !pipelineState.active ||
+    pipelineState.requested?.revision!==pipelineState.active.revision);
+}
+function pipelineFormOptions(){
+  const options={};
+  for(const [key,spec] of Object.entries(pipelineFields)){
+    const value=$(`#pipeline-${key}`).value;
+    options[key]=key==='net_devices'?(value.trim() || null):spec.type==='number'?Number(value):value;
+  }
+  return options;
+}
+function fillPipelineOptions(options){
+  for(const key of Object.keys(pipelineFields))if(key in options)$(`#pipeline-${key}`).value=options[key] ?? '';
+}
+function displayImageInformation(workload){
+  if(!workload)return;
+  const source=workload.source || {}, type=source.type || 'Unknown source';
+  const name=source.path || source.file || source.filename;
+  const shape=workload.detector_shape?.join(' × ') || 'unknown';
+  const volume=workload.volume_shape?.join(' × ') || 'unknown';
+  const dtype={u16:'uint16',f32:'float32'}[workload.detector_element] || workload.detector_element || 'unknown';
+  $('#pipeline-image-info').textContent=`${type}${name?` · ${name}`:''} · Image ${shape}, ${dtype} · ${workload.projections_per_volume ?? '—'} projections/volume · ${workload.detector_frame_bytes==null?'—':bytes(workload.detector_frame_bytes)} per frame · Volume ${volume}, ${workload.volume_bytes==null?'—':bytes(workload.volume_bytes)}`;
+}
+function displayPipelineState(state){
+  const rejected=pipelineState?.run_id===state.run_id && Boolean(state.error || state.restart_error) &&
+    state.requested?.revision===state.active?.revision &&
+    state.requested?.revision<pipelineState.requested?.revision;
+  const cancelled=pipelineState?.run_id===state.run_id && ['stopping','finished','failed'].includes(state.phase) &&
+    state.requested?.revision===state.active?.revision;
+  if(pipelineState?.run_id===state.run_id && state.requested?.revision<pipelineState.requested?.revision && !rejected && !cancelled)return;
+  const changed=rejected || cancelled || !pipelineState || pipelineState.run_id!==state.run_id ||
+    pipelineState.active?.revision!==state.active?.revision;
+  pipelineState=state;
+  if(!pipelineDirty && !pipelineSaving && changed){
+    const options=state.active?.options || {};
+    for(const key of Object.keys(pipelineFields)){
+      const input=$(`#pipeline-${key}`);input.value=options[key] ?? '';
+      input.placeholder=key in options?'':'Unavailable';
+      if(['gpu','decompress_gpu','correct_gpu','reconstruct_gpu'].includes(key))input.max=state.gpu_count==null?'':state.gpu_count-1;
+    }
+  }
+  for(const key of ['pixels','slices','angles']){
+    const input=$(`#pipeline-${key}`);input.disabled=Boolean(state.fixed_geometry);
+    input.title=state.fixed_geometry?'Geometry is fixed by the HDF5 input.':'';
+  }
+  const pending=pipelineTransitionPending();
+  $('#pipeline-fields').disabled=pipelineSaving || pending;
+  $('#pipeline-apply').disabled=pipelineSaving || pending;
+  $('#pipeline-apply').textContent=pipelineSaving?'Queuing restart…':'Restart after current scan';
+  $('#pipeline-stop').disabled=pipelineStopping || ['finished','failed','stopping'].includes(state.phase);
+  $('#pipeline-stop').textContent=pipelineStopping || state.phase==='stopping'?'Stopping acquisition…':'Stop acquisition';
+  $('#pipeline-current').disabled=!state.active || pipelineSaving || reconSaving || pipelineRecommending;
+  $('#pipeline-auto-buffers').disabled=!state.active || pending || pipelineSaving || pipelineRecommending;
+  $('#pipeline-auto-buffers').textContent=pipelineRecommending?'Sizing buffers…':'Size buffers for this scan';
+  let message=state.phase==='stopping'?'Stopping acquisition and releasing all pipeline resources…':state.phase==='restarting'?'Finishing this run and restarting all stages…':
+    state.phase==='finished'?(pipelineStopRequested?'Acquisition stopped. The last image remains visible.':'Acquisition finished. Start a new acquisition to change pipeline settings.'):
+    state.phase==='failed'?`Pipeline failed: ${state.error || state.restart_error || 'See acquisition status.'}`:
+    pending?`Settings ${state.requested?.revision} queued. The current scan finishes before all stages restart.`:
+    `Settings ${state.active.revision} active for run ${state.run_id}.`;
+  $('#pipeline-status').textContent=(pipelineStopWaiting?'Waiting for viewer to reconnect to send Stop…':'') || pipelineError || state.error || state.restart_error || (pipelineDirty?`${pipelineNotice || 'Unapplied edits.'} ${message}`:message);
+  $('#pipeline-status').classList.toggle('error',Boolean(pipelineError || state.error || state.restart_error));
+}
+for(const event of ['input','change'])$('#pipeline-form').addEventListener(event,()=>{
+  pipelineDirty=true;pipelineError='';pipelineNotice='';if(pipelineState)displayPipelineState(pipelineState);
+});
+$('#pipeline-form').addEventListener('submit',async event=>{
+  event.preventDefault();if(!pipelineState || pipelineSaving || pipelineTransitionPending())return;
+  const options=pipelineFormOptions();
+  pipelineSaving=true;pipelineError='';displayPipelineState(pipelineState);
+  try{
+    const response=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(options)});
+    if(!response.ok)throw new Error(await response.text());
+    const state=await response.json();pipelineDirty=false;pipelineSaving=false;pipelineNotice='';displayPipelineState(state);
+    if(reconState)displayReconstructionState(reconState);
+  }catch(error){pipelineSaving=false;pipelineError=error.message;displayPipelineState(pipelineState);}
+});
+
+$('#pipeline-stop').addEventListener('click',async()=>{
+  if(!pipelineState || pipelineStopping || ['finished','failed','stopping'].includes(pipelineState.phase))return;
+  pipelineStopping=true;pipelineError='';displayPipelineState(pipelineState);
+  try{
+    const deadline=Date.now()+60000;
+    let response;
+    while(true){
+      const remaining=deadline-Date.now();
+      if(remaining<=0)throw new Error('Could not send Stop because the viewer did not reconnect within 60 seconds.');
+      try{
+        response=await fetch('/api/pipeline/stop',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(Math.min(1500,remaining))});
+        break;
+      }catch(error){
+        if(Date.now()>=deadline)throw new Error('Could not send Stop because the viewer did not reconnect within 60 seconds.');
+        pipelineStopWaiting=true;displayPipelineState(pipelineState);
+        await new Promise(resolve=>setTimeout(resolve,Math.min(350,Math.max(0,deadline-Date.now()))));
+      }
+    }
+    pipelineStopWaiting=false;
+    if(!response.ok)throw new Error(await response.text());
+    const state=await response.json();pipelineStopRequested=true;pipelineStopping=false;pipelineDirty=false;pipelineNotice='';displayPipelineState(state);
+    if(reconState)displayReconstructionState(reconState);
+  }catch(error){pipelineStopping=false;pipelineStopWaiting=false;pipelineError=error.message;displayPipelineState(pipelineState);}
+});
+$('#pipeline-auto-buffers').addEventListener('click',async()=>{
+  if(!pipelineState?.active || pipelineRecommending || pipelineSaving || pipelineTransitionPending())return;
+  pipelineRecommending=true;pipelineError='';displayPipelineState(pipelineState);
+  try{
+    const response=await fetch('/api/pipeline/recommend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pipelineFormOptions())});
+    if(!response.ok)throw new Error(await response.text());
+    const result=await response.json();fillPipelineOptions(result.options);
+    pipelineDirty=true;pipelineNotice='Buffers sized for this scan. Apply to restart with these settings.';
+    pipelineRecommending=false;displayPipelineState(pipelineState);
+  }catch(error){pipelineRecommending=false;pipelineError=error.message;displayPipelineState(pipelineState);}
+});
+$('#pipeline-current').addEventListener('click',()=>{
+  if(!pipelineState?.active || pipelineSaving || reconSaving || pipelineRecommending)return;
+  const state=pipelineState;pipelineDirty=false;pipelineError='';pipelineNotice='';pipelineState=null;displayPipelineState(state);
+  if(reconState){
+    reconDirty=false;reconError='';fillReconstructionOptions(reconState.active?.options || reconState.requested.options,reconState);
+    displayReconstructionState(reconState);
+  }
+});
+
 let reconState=null, reconDirty=false, reconSaving=false, reconError='';
 const reconDefaults={iterations:40,relaxation:1,min_constraint:0,max_constraint:null,
   threads:4,center:null,filter_cutoff:null,gaussian_fwhm:0,scale_factor:1,slices_per_block:0};
@@ -141,12 +313,7 @@ function reconstructionFields(){
     label.querySelector('input,select').disabled=!visible;
   }
 }
-function displayReconstructionState(state){
-  if(reconState && state.requested.revision<reconState.requested.revision)return;
-  const changed=!reconState || state.requested.revision!==reconState.requested.revision;
-  reconState=state;
-  if(!reconDirty && !reconSaving && changed){
-    const options=state.requested.options;
+function fillReconstructionOptions(options,state){
     $('#recon-algorithm').value=options.algorithm;
     $('#recon-filter').value=options.filter || 'ram-lak';
     for(const [key,fallback] of Object.entries(reconDefaults)){
@@ -157,9 +324,16 @@ function displayReconstructionState(state){
     $('#recon-slices_per_block').min=state.output_mode==='blocks'?1:0;
     $('#recon-slices_per_block').max=state.output_mode==='blocks'?state.output_capacity_slices:'';
     reconstructionFields();
+}
+function displayReconstructionState(state){
+  if(reconState && state.requested.revision<reconState.requested.revision)return;
+  const changed=!reconState || state.requested.revision!==reconState.requested.revision;
+  reconState=state;
+  if(!reconDirty && !reconSaving && changed){
+    fillReconstructionOptions(state.requested.options,state);
   }
-  $('#recon-fields').disabled=reconSaving || state.finished;
-  $('#recon-apply').disabled=reconSaving || state.finished;
+  $('#recon-fields').disabled=reconSaving || state.finished || pipelineTransitionPending();
+  $('#recon-apply').disabled=reconSaving || state.finished || pipelineTransitionPending();
   $('#recon-apply').textContent=reconSaving?'Applying…':'Apply to next scan';
   const active=state.active, pending=!active || active.revision!==state.requested.revision;
   const message=state.finished
@@ -179,7 +353,7 @@ $('#recon-form').addEventListener('change',()=>{
 });
 $('#recon-form').addEventListener('submit',async event=>{
   event.preventDefault();
-  if(!reconState || reconSaving || reconState.finished)return;
+  if(!reconState || reconSaving || reconState.finished || pipelineTransitionPending())return;
   const method=$('#recon-algorithm').value, options={algorithm:method};
   for(const key of Object.keys(reconDefaults)){
     const input=$(`#recon-${key}`);
@@ -742,18 +916,45 @@ async function initializeRenderer(){
 }
 initializeRenderer();
 
+function resetViewerRun(runID){
+  if(viewerRunID===runID)return;
+  const previous=viewerRunID;viewerRunID=runID;
+  if(previous===null)return;
+  stopPlayback();controller?.abort();++requestID;busy=false;
+  sliceController?.abort();++sliceRequestID;
+  if(sliceURL)URL.revokeObjectURL(sliceURL);sliceURL=null;sliceShape=null;
+  $('#slice-image').removeAttribute('src');
+  frames=[];selected=null;displayed=null;followLive=true;cache.clear();cacheBytes=0;
+  reconState=null;reconDirty=false;reconSaving=false;reconError='';inputDefaultsSet=false;
+  if(!pipelineStopping)pipelineStopRequested=false;
+  $('#waiting').hidden=false;$('#waiting').textContent='Waiting for this run’s first reconstructed volume';
+  $('#scan').textContent='—';$('#dimensions').textContent='—';$('#displayed-reconstruction').textContent='';
+  for(const stage of document.querySelectorAll('.stage')){
+    stage.querySelector('strong').textContent='0';stage.querySelector('.detail').textContent='Waiting';
+  }
+  $('#view-message').textContent='New pipeline run. Following the latest completed scan.';
+  refreshControls();
+}
+
 async function update(){
   try{
     const response=await fetch('/api/status',{cache:'no-store'});
     if(!response.ok)throw new Error('Status unavailable');
     const state=await response.json(),view=state.viewer;
-    updateDisplayRange(view,state.workload);
+    if(state.pipeline_control){
+      resetViewerRun(state.pipeline_control.run_id);displayPipelineState(state.pipeline_control);
+    }else if(!pipelineSaving){
+      $('#pipeline-fields').disabled=true;$('#pipeline-apply').disabled=true;
+      $('#pipeline-stop').disabled=true;$('#pipeline-current').disabled=true;$('#pipeline-auto-buffers').disabled=true;
+      $('#pipeline-status').textContent=state.pipeline_control_error || 'Pipeline controls unavailable.';
+    }
+    updateDisplayRange(view,state.workload);displayImageInformation(state.workload);
     if(state.reconstruction_control)displayReconstructionState(state.reconstruction_control);
     else if(!reconSaving){
       $('#recon-fields').disabled=true;$('#recon-apply').disabled=true;
       $('#recon-status').textContent=state.reconstruction_control_error || 'Reconstruction controls unavailable.';
     }
-    phase=state.phase || 'waiting';
+    phase=['restarting','stopping'].includes(state.pipeline_control?.phase)?state.pipeline_control.phase:state.phase || 'waiting';
     $('#phase').textContent=phase[0].toUpperCase()+phase.slice(1);$('#dot').className=`dot ${phase}`;
     for(const stage of document.querySelectorAll('.stage')){
       const report=state.stages?.[stage.dataset.role];if(!report)continue;
@@ -796,7 +997,7 @@ async function update(){
       const method=reconstruction?`${reconstruction.algorithm.toUpperCase()} (${reconstruction.backend}) · ${settings.join(' · ')} · `:'';
       $('#workload').textContent=`${method}Detector ${workload.detector_shape.join(' × ')} · ${workload.projections_per_volume} projections/volume · ${bytes(workload.detector_bytes_per_volume)} raw detector data/volume · ${state.throughput?.volumes_per_second?.toFixed(2) ?? '0.00'} volumes/s mean`;
     }
-    $('#message').textContent=view.failure || state.failure || (phase==='draining'
+    $('#message').textContent=view.failure || state.failure || (pipelineStopRequested && phase==='finished'?'Acquisition stopped. The last image remains visible.':phase==='draining'
       ?'Finishing the current scan and draining processing and archival…'
       :phase==='finished'?'Acquisition complete. Buffered scans are available until the viewer shuts down.'
       :`Viewer received ${view.received_volumes} volumes; ${view.skipped} skipped while keeping up with acquisition.`);
@@ -810,7 +1011,10 @@ async function update(){
   }catch(error){
     $('#phase').textContent='Disconnected';$('#dot').className='dot';
     $('#recon-fields').disabled=true;$('#recon-apply').disabled=true;
-    $('#message').textContent='The acquisition viewer is offline. The last displayed volume remains visible.';
+    $('#pipeline-fields').disabled=true;$('#pipeline-apply').disabled=true;
+    $('#pipeline-current').disabled=true;$('#pipeline-auto-buffers').disabled=true;
+    $('#pipeline-status').textContent=pipelineStopping?'Waiting for viewer to reconnect to send Stop…':pipelineStopRequested?'Acquisition stopped. The last image remains visible.':pipelineTransitionPending()?'Pipeline restart in progress. Reconnecting to this viewer…':'Viewer unavailable. Reconnecting…';
+    $('#message').textContent=pipelineStopRequested?'Acquisition stopped. The last image remains visible.':'The acquisition viewer is offline. The last displayed volume remains visible.';
   }
   setTimeout(update,250);
 }

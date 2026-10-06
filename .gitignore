@@ -3,3 +3,4 @@ stage*/
 results/
 __pycache__/
 .pixi/
+tomography/benchmarks/*.json
