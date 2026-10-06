@@ -1,0 +1,37 @@
+[workspace]
+name = "tango-ucx-gpu-pipeline-examples"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[system-requirements]
+cuda = "12.9"
+
+[dependencies]
+python = "3.14.*"
+cupy = ">=14"
+astra-toolbox = { version = ">=2.5,<3", build = "cuda*" }
+nvcomp = ">=5.3,<6"
+lz4 = "*"
+matplotlib-base = "*"
+pillow = "*"
+pybind11 = ">=3.1,<4"
+pytango = ">=10"
+cpptango = ">=10"
+ucx = ">=1.21"
+nlohmann_json = ">=3.12"
+cppzmq = "*"
+cmake = "*"
+ninja = "*"
+cxx-compiler = "*"
+cuda-version = "12.9.*"
+cuda-cudart-dev = "*"
+cuda-nvcc = "*"
+tomopy = ">=1.15,<2"
+h5py = ">=3.16.0,<4"
+
+[tasks]
+configure-pipeline = { cmd = "cmake $CMAKE_ARGS -S . -B build-pipeline -GNinja -DCMAKE_CXX_COMPILER=$CXX -DPython3_EXECUTABLE=$CONDA_PREFIX/bin/python -DCMAKE_PREFIX_PATH=stage -DEXAMPLES_CUDA=ON -DEXAMPLES_PIPELINE=ON -DEXAMPLES_PYTHON_PREFIX=stage" }
+build-pipeline = { cmd = "cmake --build build-pipeline --target pipeline_device -j 2", depends-on = ["configure-pipeline"] }
+tomography = { cmd = "python tomography/demo.py", depends-on = ["build-pipeline"] }
+tomography-live = { cmd = "python tomography/demo.py --loop --live", depends-on = ["build-pipeline"] }
+test-pipeline = { cmd = "ctest --test-dir build-pipeline -R '^tomography.*gpu_tcp$' --output-on-failure", depends-on = ["build-pipeline"] }

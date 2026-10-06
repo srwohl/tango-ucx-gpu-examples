@@ -1,0 +1,5 @@
+build*/
+stage*/
+results/
+__pycache__/
+.pixi/
