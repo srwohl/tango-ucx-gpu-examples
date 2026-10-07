@@ -162,6 +162,10 @@ class LaunchPolicyTests(unittest.TestCase):
             pipeline_args(live, dict(pipeline_options(live), reconstructors=2, transport_batch=5,
                                      receive_budget_mib=1))
 
+    def test_volume_verification_is_on_unless_switched_off(self):
+        self.assertTrue(parse_args([]).verify_volumes)
+        self.assertFalse(parse_args(["--no-verify-volumes"]).verify_volumes)
+
     def test_reconstruction_stage_report_sums_the_pull_set(self):
         report = dict(processed=720, published=1, completed_scans=1, slot_wait_ns=5, reconstruct_ns=7,
                       quarantined_bytes=0, pressure=False, failure="", input_failure="",

@@ -375,15 +375,19 @@ def run(args, output, stop_requested, env):
                     last_settings = json.loads(proxies[reconstructor].command_inout(
                         "ReconstructionForScan", str(scan["scan_id"] + completed)))
                     options = last_settings["options"]
-                    if options != verified_options:
+                    if not args.verify_volumes:
+                        verified_options = options
+                    elif options != verified_options:
                         expected_volume = reference_reconstruction(
                             reference_sinogram, np.asarray(scan["theta"], np.float32),
                             args.reconstruct_gpu, options,
                             block_rows=options["slices_per_block"] if args.output_mode == "blocks" else None)
                         verified_options = options
-                    np.testing.assert_allclose(result, expected_volume, rtol=3e-4, atol=2e-6)
+                    # Unverified volumes are still written and counted; the archive is always checked.
+                    if args.verify_volumes:
+                        np.testing.assert_allclose(result, expected_volume, rtol=3e-4, atol=2e-6)
                     error = (float(np.linalg.norm(result-truth)/np.linalg.norm(truth))
-                             if truth is not None else None)
+                             if truth is not None and args.verify_volumes else None)
                     # Live tuning can intentionally change scale, smoothing or convergence.
                     if not np.isfinite(result).all():
                         raise ValueError("reconstruction contains nonfinite values")
@@ -475,7 +479,7 @@ def run(args, output, stop_requested, env):
             figure.savefig(output / "reconstruction.png", dpi=140)
             plt.close(figure)
             summary = dict(device_servers=len(devices), completed_scans=completed, archived_frames=archived_count,
-                           live_view=live_report, stopped=draining,
+                           live_view=live_report, stopped=draining, volumes_verified=args.verify_volumes,
                            reconstruction_shape=list(reconstruction.shape), relative_l2_error=error,
                            max_phantom_error=args.max_phantom_error if truth is not None else None,
                            reconstruction_settings=last_settings,
@@ -655,6 +659,9 @@ def parse_args(argv=None):
                         help="post-reconstruction 3D Gaussian FWHM in voxels (default 0: off)")
     parser.add_argument("--scale-factor", type=float, default=1.0,
                         help="positive output multiplier after smoothing (default 1)")
+    parser.add_argument("--verify-volumes", action=argparse.BooleanOptionalAction, default=True,
+                        help="compare every volume with an independent reference reconstruction "
+                        "(default on); --no-verify-volumes measures the pipeline without that host work")
     parser.add_argument("--max-phantom-error", type=float, default=0.65,
                         help="maximum relative L2 against raw phantom; adjust for deliberate tuning (default 0.65)")
     parser.add_argument("--gpu", type=int, default=0,

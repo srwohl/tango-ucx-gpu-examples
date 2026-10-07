@@ -333,7 +333,7 @@ applies to every scan until the launcher stops. Choose a different method on the
 | Method | Backend | Processing |
 | --- | --- | --- |
 | `gridrec` | TomoPy on CPU | Padded Fourier gridding, using `--recon-threads` CPU threads (default 4) |
-| `fbp` | ASTRA `FBP_CUDA` on GPU | Slice-wise filtered backprojection, linked directly to GPU arrays |
+| `fbp` | CuPy filtering + ASTRA `FBP_CUDA` backprojection on GPU | Filter batched over slices, slice-wise backprojection through GPU-linked scratch |
 | `sirt` | ASTRA direct GPU projectors + CuPy | Iterative reconstruction, using `--iterations` (default 40) |
 
 ```sh
@@ -400,7 +400,8 @@ scratch and weights: one for a regular block and one for the shorter tail. Their
 combined depth is less than twice the block size; changing block size releases the
 old workspaces. CuPy's memory pool can retain released allocations for reuse. GridRec
 downloads, pads, reconstructs and uploads one block at a time, reducing its temporary
-host arrays. FBP already uses per-slice backend scratch. Optional 3D Gaussian smoothing
+host arrays. FBP filters a bounded batch of slices at a time (about 250 MiB of transient
+CuPy scratch regardless of block size) and backprojects through per-slice scratch. Optional 3D Gaussian smoothing
 can still require full-volume scratch. Slice blocks do not introduce distributed
 workers or partial-volume publication.
 
@@ -689,6 +690,12 @@ pixi run tomography --output results/tomography-pressure \
 pixi run test-pipeline
 ```
 
+The launcher compares every volume with an independent reference reconstruction on the
+host, which takes longer than reconstructing it and holds the reconstruction devices'
+output slots meanwhile. `--no-verify-volumes` skips that comparison to measure the
+pipeline itself; volumes are still written, counted and checked for finite values, the
+compressed archive is still verified, and `summary.json` records `volumes_verified`.
+
 The receive budget includes the library's bookkeeping as well as payload storage.
 Without `--budget`, each link is sized to hold one scan of corrected frames, at most
 1024 frames (the library's publisher slot limit) and 512 MiB, and never below two
@@ -732,10 +739,12 @@ projection primitives directly. Each CuPy/ASTRA handoff explicitly synchronizes 
 ASTRA owns its CUDA streams. The volume is downloaded by the final writer and live viewer.
 See [ASTRA's direct GPU projectors](https://github.com/astra-toolbox/astra-toolbox/blob/v2.5.0/python/astra/projector3d.py)
 and [NVIDIA nvCOMP's preallocated decoding API](https://docs.nvidia.com/cuda/nvcomp/py_api.html).
-In FBP mode, each sinogram slice and output slice are linked through ASTRA's DLPack
-interface; no full host sinogram is introduced. ASTRA 2.5's `FBP_CUDA` still allocates
-pitched GPU scratch and copies the input and output slices between GPU allocations;
-DLPack linking removes host staging, but does not remove those backend copies. See
+In FBP mode, CuPy applies ASTRA's filter response to a batch of slices with one FFT
+pair, and one `FBP_CUDA` algorithm (`FilterType: none`) backprojects each slice through
+a single pair of DLPack-linked GPU scratch arrays; no host sinogram is introduced.
+Per-slice links and ASTRA's own per-slice filtering dominated the host cost before. ASTRA 2.5 still
+copies each slice between GPU allocations. A single `parallel3d` backprojection is not
+used because its interpolation differs from `FBP_CUDA` beyond the verification tolerance. See
 [the FBP implementation](https://github.com/astra-toolbox/astra-toolbox/blob/v2.5.0/src/CudaFilteredBackProjectionAlgorithm.cpp).
 GridRec mode stages each selected sinogram block and reconstructed block on the host,
 synchronizing the upload before its temporary host buffer is released.
