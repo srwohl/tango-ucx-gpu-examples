@@ -7,7 +7,8 @@ import unittest
 from unittest.mock import patch
 
 from demo import (buffering_options, device_command, launch_environment, parse_args,
-                  reconstruction_options, pipeline_args, pipeline_options)
+                  reconstruction_options, pipeline_args, pipeline_options,
+                  combined_report, reconstructor_names)
 from host_buffering import memory_plan
 
 
@@ -125,6 +126,53 @@ class LaunchPolicyTests(unittest.TestCase):
                         self.assertIn(value("--upstream"), upstream.values())
                     else:
                         self.assertNotIn("--upstream", command)
+
+    def test_reconstructors_form_a_pull_set_whose_ring_holds_one_scan(self):
+        single = parse_args([])
+        self.assertEqual(reconstructor_names(single), ["reconstruct"])
+        args = parse_args(["--gpu-stress", "--reconstructors", "3", "--transport-batch", "16",
+                           "--reconstruct-gpu", "2"])
+        names = reconstructor_names(args)
+        self.assertEqual(names, ["reconstruct-0", "reconstruct-1", "reconstruct-2"])
+        # One scan of corrected frames and a spare batch fit each puller's receive ring.
+        self.assertGreaterEqual(args.budget, (720 + 16) * 128 * 256 * 4)
+        upstream = dict(correct="correct-address")
+        for role in ("correct", names[1]):
+            command = device_command(args, role, Path("/tmp/run"), 1234, "device-name",
+                                     dict(upstream, decompress="decode-address"))
+            self.assertEqual(command[command.index("--role") + 1], role.partition("-")[0])
+            self.assertEqual(command[command.index("--reconstructors") + 1], "3")
+        self.assertEqual(command[command.index("--gpu") + 1], "2")
+        self.assertEqual(command[command.index("--upstream") + 1], "correct-address")
+        self.assertEqual(pipeline_options(args)["reconstructors"], 3)
+        for flags, error in ((["--reconstructors", "2", "--angles", "90", "--transport-batch", "16"], "multiple"),
+                             (["--reconstructors", "2", "--output-mode", "blocks", "--slices-per-block", "2"],
+                              "one reconstructor"),
+                             (["--reconstructors", "2", "--budget", "262144"], "holding one scan"),
+                             (["--reconstructors", "2", "--angles", "5000"], "4096 frames"),
+                             (["--reconstructors", "9"], "invalid choice")):
+            message = StringIO()
+            with self.subTest(flags=flags), redirect_stderr(message), self.assertRaises(SystemExit):
+                parse_args(flags)
+            self.assertIn(error, message.getvalue())
+        live = parse_args(["--live", "--algorithm", "fbp"])
+        self.assertEqual(pipeline_args(live, dict(pipeline_options(live), reconstructors=2,
+                                                 receive_budget_mib=1)).reconstructors, 2)
+        with self.assertRaisesRegex(ValueError, "multiple"):
+            pipeline_args(live, dict(pipeline_options(live), reconstructors=2, transport_batch=5,
+                                     receive_budget_mib=1))
+
+    def test_reconstruction_stage_report_sums_the_pull_set(self):
+        report = dict(processed=720, published=1, completed_scans=1, slot_wait_ns=5, reconstruct_ns=7,
+                      quarantined_bytes=0, pressure=False, failure="", input_failure="",
+                      payload_bytes=64, input_transport="cuda_ipc")
+        combined = combined_report([report, dict(report, published=2, completed_scans=2, pressure=True)])
+        self.assertEqual((combined["published"], combined["completed_scans"], combined["reconstruct_ns"]),
+                         (3, 3, 14))
+        self.assertTrue(combined["pressure"])
+        self.assertEqual((combined["payload_bytes"], combined["failure"]), (64, ""))
+        self.assertEqual(len(combined["reconstructors"]), 2)
+        self.assertEqual(combined_report([report])["published"], 1)
 
     def test_gpu_indices_are_logical_and_negative_values_are_rejected(self):
         args = parse_args(["--gpu", "4", "--decompress-gpu", "0", "--profile", "auto"])

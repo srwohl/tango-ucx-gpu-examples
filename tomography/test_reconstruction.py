@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from reconstruction import (SirtGPU, _gpu_arrays, _fbp_options, configuration, fbp_gpu,
+from reconstruction import (FILTERS, SirtGPU, _gpu_arrays, _fbp_options, configuration, fbp_gpu,
                             gridrec, live_configuration, postprocess, reference_reconstruction, slice_blocks)
 
 
@@ -430,6 +430,25 @@ class FBPTests(unittest.TestCase):
             np.testing.assert_allclose(result, expected, rtol=3e-4, atol=2e-6)
             self.assertLess(np.linalg.norm(result[0] - truth) / np.linalg.norm(truth), 0.3)
             np.testing.assert_array_equal(source.get(), sinogram)
+
+    def test_every_filter_matches_across_filter_batches_with_a_shorter_tail(self):
+        import cupy as cp
+
+        sinogram, theta, _ = disk_scan()
+        sinogram = np.ascontiguousarray(sinogram * np.linspace(0.5, 1.5, 5, dtype=np.float32)[:, None, None])
+        source = cp.asarray(sinogram)
+        output = cp.empty((5, 64, 64), dtype=cp.float32)
+        cases = [(name, None) for name in FILTERS] + [("shepp-logan", 0.5), ("hann", 0.25)]
+        # Two slices per batched filter call: 2 * 180 angles * 128 padded samples.
+        with patch("reconstruction.FBP_FILTER_SAMPLES", 2 * 180 * 128):
+            for filter_name, cutoff in cases:
+                with self.subTest(filter=filter_name, cutoff=cutoff):
+                    expected = reference_reconstruction(
+                        sinogram, theta, 0, configuration("fbp", filter_name, filter_cutoff=cutoff))
+                    output.fill(np.nan)
+                    fbp_gpu(source, output, theta, 0, filter_name, filter_cutoff=cutoff)
+                    np.testing.assert_allclose(output.get(), expected, rtol=3e-4, atol=2e-6)
+        np.testing.assert_array_equal(source.get(), sinogram)
 
 
 @unittest.skipUnless(os.environ.get("TOMOGRAPHY_TEST_GPU") == "1", "set TOMOGRAPHY_TEST_GPU=1")

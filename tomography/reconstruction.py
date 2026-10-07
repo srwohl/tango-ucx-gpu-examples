@@ -6,6 +6,8 @@ import numpy as np
 ALGORITHMS = ("sirt", "fbp", "gridrec")
 FILTERS = ("ram-lak", "shepp-logan", "hann", "parzen")
 GRIDREC_FILTERS = {"ram-lak": "ramlak", "shepp-logan": "shepp", "hann": "hann", "parzen": "parzen"}
+# Padded detector samples per batched FBP filter call; bounds its transient GPU scratch.
+FBP_FILTER_SAMPLES = 1 << 24
 
 
 def live_configuration(options, columns):
@@ -266,35 +268,76 @@ class SirtGPU:
                 cp.cuda.get_current_stream().synchronize()
 
 
+def _fbp_filter(columns, filter_name, filter_cutoff):
+    """FBP_CUDA's frequency response (ASTRA 2.5) and its zero-padded detector length.
+
+    The ramp is the transform of the band-limited spatial kernel, not |w|, and the
+    windows are functions of w = 2 pi k / size that vanish above pi * cutoff.
+    """
+    size = 1 << (2 * columns - 1).bit_length()
+    lag = np.minimum(np.arange(size), size - np.arange(size))
+    kernel = np.where(lag % 2, -1 / (np.pi * np.maximum(lag, 1)) ** 2, 0.0)
+    kernel[0] = 0.25
+    response = 2 * np.fft.rfft(kernel).real
+    cutoff = 1.0 if filter_cutoff is None else filter_cutoff
+    w = 2 * np.pi * np.arange(size // 2 + 1) / size
+    if filter_name == "shepp-logan":
+        response *= np.sinc(w / (2 * np.pi * cutoff))
+    elif filter_name == "hann":
+        response *= (1 + np.cos(w / cutoff)) / 2
+    elif filter_name == "parzen":
+        q = w / np.pi
+        response *= np.where(q <= 0.5, 1 - 6 * q**2 * (1 - q), 2 * (1 - q)**3)
+    response[w > np.pi * cutoff] = 0
+    return size, response.astype(np.float32)
+
+
 def fbp_gpu(sinogram, output, theta, gpu, filter_name, *, filter_cutoff=None):
-    """DLPack GPU links; ASTRA 2.5 additionally uses internal device-to-device scratch."""
+    """Batched CuPy filtering, then ASTRA's 2D backprojection through one reused algorithm.
+
+    FBP_CUDA plans its FFTs per run and each DLPack link costs about a millisecond,
+    so slices pass through owned linked scratch. One parallel3d backprojection would
+    cover a block, but it interpolates differently, beyond the verification tolerance.
+    """
     import astra
     import cupy as cp
 
     _gpu_arrays(sinogram, output, theta, gpu)
-    backend_options = _fbp_options(gpu, filter_name, filter_cutoff)
-    columns = sinogram.shape[-1]
+    _fbp_options(gpu, filter_name, filter_cutoff)
+    rows, angles, columns = sinogram.shape
+    size, response = _fbp_filter(columns, filter_name, filter_cutoff)
     # ASTRA's 2D and parallel3d angle conventions have opposite signs.
     pg = astra.create_proj_geom("parallel", 1.0, columns, -theta)
     vg = astra.create_vol_geom(columns, columns)
-    with cp.cuda.Device(gpu):
-        cp.cuda.get_current_stream().synchronize()
-        for row in range(sinogram.shape[0]):
-            with ExitStack() as cleanup:
-                projections = astra.data2d.link("-sino", pg, sinogram[row])
-                cleanup.callback(astra.data2d.delete, projections)
-                volume = astra.data2d.link("-vol", vg, output[row])
-                cleanup.callback(astra.data2d.delete, volume)
-                config = astra.astra_dict("FBP_CUDA")
-                config.update(ProjectionDataId=projections, ReconstructionDataId=volume,
-                              option=backend_options)
-                algorithm = astra.algorithm.create(config)
-                cleanup.callback(astra.algorithm.delete, algorithm)
+    with cp.cuda.Device(gpu), ExitStack() as cleanup:
+        stream = cp.cuda.get_current_stream()
+        response = cp.asarray(response)
+        filtered = cp.empty((angles, columns), dtype=cp.float32)
+        image = cp.empty((columns, columns), dtype=cp.float32)
+        projections = astra.data2d.link("-sino", pg, filtered)
+        cleanup.callback(astra.data2d.delete, projections)
+        volume = astra.data2d.link("-vol", vg, image)
+        cleanup.callback(astra.data2d.delete, volume)
+        config = astra.astra_dict("FBP_CUDA")
+        config.update(ProjectionDataId=projections, ReconstructionDataId=volume,
+                      option={"GPUindex": gpu, "FilterType": "none"})
+        algorithm = astra.algorithm.create(config)
+        cleanup.callback(astra.algorithm.delete, algorithm)
+        # Complete writes before returning the borrowed output slot, also on error.
+        cleanup.callback(stream.synchronize)
+        for block in slice_blocks(rows, max(1, FBP_FILTER_SAMPLES // (angles * size))):
+            spectrum = cp.fft.rfft(sinogram[block], n=size, axis=-1)
+            spectrum *= response
+            batch = cp.fft.irfft(spectrum, n=size, axis=-1)
+            for row in range(block.start, block.stop):
+                filtered[...] = batch[row - block.start, :, :columns]
+                # ASTRA owns its streams: explicitly order each CuPy/ASTRA handoff.
+                stream.synchronize()
                 try:
                     astra.algorithm.run(algorithm)
                 finally:
-                    # ASTRA owns its streams; complete writes before unlinking borrowed arrays.
                     cp.cuda.runtime.deviceSynchronize()
+                output[row] = image
 
 
 def reference_reconstruction(sinogram, theta, gpu, options, *, block_rows=None):

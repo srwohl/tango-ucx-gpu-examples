@@ -11,6 +11,7 @@ import lz4.block
 import numpy as np
 
 from demo import parse_args, reconstruction_options, streaming_rates, workload_description
+from pipeline_control import link_budget
 from scan import from_hdf5, hdf5_dimensions, selection
 
 
@@ -215,7 +216,7 @@ class HDF5ScanTests(unittest.TestCase):
                            "--live", "--stress", "--center", "3"])
         self.assertEqual((args.slices, args.pixels, args.angles), (2, 6, 2))
         self.assertEqual(args.algorithm, "gridrec")
-        self.assertEqual((args.budget, args.scan_period), (8388608, 0))
+        self.assertEqual((args.budget, args.scan_period), (link_budget(2, 6, 2, 1)[0], 0))
         self.assertEqual(hdf5_dimensions(self.file), dict(rows=4, columns=6, angles=5))
         for flags in (["--pixels", "64"], ["--center", "7"], ["--sino", "4:4"], ["--proj", "0:6"]):
             with self.subTest(flags=flags), redirect_stderr(StringIO()), self.assertRaises(SystemExit):

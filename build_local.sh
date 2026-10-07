@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 task_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-task_library=${TANGO_UCX_SOURCE:-"$task_root/../tango-bulk2"}
+task_library=${TANGO_UCX_SOURCE:-"$task_root/../tango-ucx"}
 # Reuse the library's resolved CUDA environment rather than mixing compilers or Python ABIs.
 cd "$task_library"
 pixi run -e gpu build-gpu

@@ -28,6 +28,8 @@ class DetectorProcessorTests(unittest.TestCase):
                 return config
 
             def decode(self, compressed, *, out, decompression_config):
+                # Like nvCOMP: pinned scratch for the call, dropped while its copies are queued.
+                nvcomp.allocator(64, None)
                 if isinstance(compressed, list):
                     for source, destination, size in zip(compressed, out, decompression_config):
                         self.decode(source, out=destination, decompression_config=size)
@@ -49,14 +51,32 @@ class DetectorProcessorTests(unittest.TestCase):
                 np.copyto(output, -np.log(np.clip(transmission, 1e-6, 1)))
             return correct
 
+        class Pinned:
+            def __init__(self):
+                self.ptr = 4096
+                test.pinned_live += 1
+
+            def __del__(self):
+                test.pinned_live -= 1
+
+        class Event:
+            def record(self, stream):
+                test.events.append(self)
+                self.done = test.stream_idle
+
+        test = self
+        self.pinned_live, self.events, self.stream_idle = 0, [], True
         self.kernel_input_types = []
         cupy = SimpleNamespace(dtype=np.dtype, float32=np.float32, uint8=np.uint8,
                                empty=np.empty, empty_like=np.empty_like, copyto=np.copyto,
                                ElementwiseKernel=kernel,
                                cuda=SimpleNamespace(Device=lambda gpu: SimpleNamespace(use=lambda: None),
-                                                    ExternalStream=lambda pointer: Stream()))
+                                                    ExternalStream=lambda pointer: Stream(), Event=Event,
+                                                    PinnedMemoryPool=lambda: SimpleNamespace(
+                                                        malloc=lambda nbytes: Pinned())))
         nvcomp = SimpleNamespace(Codec=Codec, BitstreamKind=SimpleNamespace(RAW="raw"),
-                                 as_array=lambda array, **options: array)
+                                 as_array=lambda array, **options: array,
+                                 set_pinned_allocator=lambda allocator: setattr(nvcomp, "allocator", allocator))
         spec = importlib.util.spec_from_file_location("detector_processor_test", Path(__file__).with_name("processors.py"))
         module = importlib.util.module_from_spec(spec)
         with patch.dict("sys.modules", {"cupy": cupy, "nvidia": SimpleNamespace(nvcomp=nvcomp)}):
@@ -135,6 +155,27 @@ class DetectorProcessorTests(unittest.TestCase):
         self.assertEqual(set(processor.batch_decoding), {2, 4})
         for index, raw in enumerate(expected):
             np.testing.assert_array_equal(pointers[index + 101].view(np.uint16).reshape(raw.shape), raw)
+
+    def test_decoder_scratch_returns_to_the_pool_only_after_its_queued_copies(self):
+        module = self.load_processor()
+        scan = dict(rows=2, columns=3, angles=4, theta=[0., .1, .2, .3],
+                    max_compressed_bytes=32, element="u16")
+        processor = module.Processor("decompress", scan, 0, 1, 1)
+        raw = np.full((2, 3), 7, np.uint16)
+        compressed = np.frombuffer(lz4.block.compress(raw.tobytes(), store_size=False), np.uint8)
+        pointers = {1: compressed, 2: np.empty(raw.nbytes, np.uint8)}
+        with patch.object(module, "array_at", side_effect=lambda p, shape, dtype, gpu: pointers[p]):
+            self.stream_idle = False
+            for kind in (0, 1):
+                processor.consume(1, compressed.nbytes, 2, kind, 0, 0.)
+            # nvCOMP has dropped both buffers, but the stream has not reached either call.
+            self.assertEqual(self.pinned_live, 2)
+            for event in self.events:
+                event.done = True
+            self.stream_idle = True
+            processor.consume(1, compressed.nbytes, 2, 2, 0, 0.)
+        self.assertEqual(self.pinned_live, 0)
+        self.assertEqual(processor.queued, [])
 
     def test_invalid_batch_is_rejected_before_reads_or_counter_changes(self):
         module = self.load_processor()

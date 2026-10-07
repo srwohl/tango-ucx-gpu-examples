@@ -154,6 +154,7 @@ const pipelineFields={
   processing_batch:{label:'Decompression frames per batch',type:'number',min:1,max:16,step:1},
   processing_mode:{label:'Decompression mode',choices:['scalar','batched']},
   sinogram_memory:{label:'Sinogram memory',choices:['gpu','host']},
+  reconstructors:{label:'Reconstructors (pull one scan each)',type:'number',min:1,max:8,step:1},
   receive_budget_mib:{label:'Receive budget (MiB)',type:'number',min:0,step:'any'},
   host_buffer_mib:{label:'Host input buffer (MiB)',type:'number',min:1,step:1},
   pinned_buffer_mib:{label:'Pinned staging buffer (MiB)',type:'number',min:1,step:1},
@@ -288,7 +289,9 @@ $('#pipeline-auto-buffers').addEventListener('click',async()=>{
     const response=await fetch('/api/pipeline/recommend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pipelineFormOptions())});
     if(!response.ok)throw new Error(await response.text());
     const result=await response.json();fillPipelineOptions(result.options);
-    pipelineDirty=true;pipelineNotice='Buffers sized for this scan. Apply to restart with these settings.';
+    const info=result.information||{};
+    const frames=info.buffered_frames==null?'':` Each link buffers ${info.buffered_frames} of ${info.scan_frames} frames${info.buffered_frames<info.scan_frames?' (limited by the transport or memory cap)':''}.`;
+    pipelineDirty=true;pipelineNotice=`Buffers sized for this scan.${frames} Apply to restart with these settings.`;
     pipelineRecommending=false;displayPipelineState(pipelineState);
   }catch(error){pipelineRecommending=false;pipelineError=error.message;displayPipelineState(pipelineState);}
 });
@@ -966,7 +969,8 @@ async function update(){
       const gpu=state.workload?.stage_gpus?.[stage.dataset.role];
       const placement=gpu!=null?` · GPU ${gpu}`:'';
       const transport=report.input_transport?` · UCX ${report.input_transport}`:'';
-      detail.textContent=`${report.completed_scans} scans complete${speed}${placement}${transport}${report.pressure?' · waiting for room':''}`;
+      const reconstructors=report.reconstructors?.length>1?` · ${report.reconstructors.length} reconstructors`:'';
+      detail.textContent=`${report.completed_scans} scans complete${speed}${placement}${reconstructors}${transport}${report.pressure?' · waiting for room':''}`;
       detail.classList.toggle('pressure',report.pressure);
     }
     $('#archived').textContent=(state.archive?.archived_frames ?? 0).toLocaleString();

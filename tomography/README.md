@@ -1,6 +1,6 @@
 # GPU tomography pipeline
 
-Four ordinary Tango device server processes use the installed tango-ucx package to move
+Four or more ordinary Tango device server processes use the installed tango-ucx package to move
 a compressed detector scan through GPU decompression, correction and selectable reconstruction.
 An independent subscriber archives the original compressed frames while processing runs.
 The same processes can replay scans continuously and serve a live browser view.
@@ -67,7 +67,9 @@ its image source, dimensions, data type, projections and frame/volume sizes.
 **Load current settings** discards local edits and reloads active acquisition and
 reconstruction settings. **Size buffers for this scan** calculates receive, host,
 pinned and output budgets from the scan and selected batch settings; the result is
-a draft until applied. Detailed controls are under **Advanced settings**.
+a draft until applied. The receive budget is sized so each link can hold a whole scan
+while reconstruction runs, limited to 1024 frames and 512 MiB per link; the notice
+reports how many frames fit. Detailed controls are under **Advanced settings**.
 
 The panel controls UCX transport and processing batch sizes,
 scalar or batched decompression, transport/interface selection, GPU placement,
@@ -114,6 +116,36 @@ separate-node launchers to exercise inter-node GPU transport. The source archive
 volume writer and browser viewer use host memory, and GridRec stages its
 reconstruction through the CPU. Select SIRT or FBP for GPU reconstruction.
 
+### Share reconstruction among several devices
+
+`--reconstructors N` starts N reconstruction devices that form a tango-ucx pull set on
+the correction device. Correction publishes one frame per projection, so a range of
+`--angles` frames is one scan: each reconstructor takes a whole scan at a turn, and a
+scan goes to a reconstructor whose receive ring has room for all of it. The devices are
+separate processes, so one can receive the next scan while another reconstructs.
+
+```sh
+nvidia-cuda-mps-control -d    # let the processes use one GPU at the same time
+pixi run tomography --gpu-stress --algorithm fbp --network auto \
+  --transport-batch 16 --processing-batch 16 --processing-mode batched \
+  --reconstructors 3 --scans 40 --output results/tomography-pull
+```
+
+Without NVIDIA MPS the processes take turns on a GPU and more reconstructors gave no
+gain in our runs; start the control daemon before the pipeline, with the same
+`CUDA_MPS_PIPE_DIRECTORY` if it is set. The transport requires that the projections per
+volume be a multiple of `--transport-batch` and at most 4096, the GPU receive ring
+limit. The receive budget must hold one scan; without `--budget` it is sized for that.
+Block output and its host assembly use one reconstructor.
+
+No rule says which device takes a scan. The volume writer subscribes to every device
+and returns volumes in scan order, holding at most one volume per device that waits for
+an earlier scan. The live viewer shows the newest scan any device offers. Reconstruction
+settings are sent to every device, and each applies them to the next scan it takes; a
+scan's settings are read from the device that reconstructed it. The `reconstruct` stage
+report sums the devices and lists each under `reconstructors`. The count is a launch
+setting: the GUI changes it with a controlled restart.
+
 `workload.network` and `workload.stage_gpus` record the selected policy and placement
 in status and summary reports. `devices.json` records each processing device's GPU.
 The live dashboard shows GPU placement and each processing link's reported UCX
@@ -150,7 +182,7 @@ the existing demo dependencies. HDF5 input remains optional for phantom runs.
 zero-based, stop is exclusive, and step must be positive. Omitted bounds select the
 remaining extent; omitted selections use the whole dataset. Dimensions come from
 the selected input: `--pixels`, `--slices` and `--angles` cannot be combined with
-`--hdf5`. Stress presets still set receive budget and scan timing when using a file.
+`--hdf5`. Stress presets still set scan timing when using a file.
 
 Use `--data-path`, `--flat-path`, `--dark-path` and `--theta-path` for other dataset
 locations. Angle units default to the theta dataset's `units` attribute, or degrees
@@ -578,7 +610,7 @@ pixi run tomography-live --stress --output results/tomography-stress
 ```
 
 `--stress` selects a **32 × 128 × 128** phantom, **360 projections per volume**,
-**8 MiB receive budgets**, and **no pause between scans**. Algorithm selection is independent
+**scan-sized receive budgets**, and **no pause between scans**. Algorithm selection is independent
 of this preset; use `--algorithm sirt --iterations 40` for the original SIRT workload.
 Each uint16 detector frame is 8 KiB rather than 1 KiB; each scan has 362 input frames
 including dark and flat. That is 2.83 MiB of raw detector data per scan, approximately
@@ -608,7 +640,7 @@ pixi run tomography-live --gpu-stress --algorithm sirt --output results/tomograp
 ```
 
 `--gpu-stress` selects **128 × 256 × 256** volumes, **720 projections**,
-8 MiB receive budgets and no scan pause. The command above selects 40 SIRT iterations.
+scan-sized receive budgets and no scan pause. The command above selects 40 SIRT iterations.
 Each detector frame is 64 KiB;
 each scan contains 45.125 MiB of raw detector data and produces a 32 MiB float32
 volume. That is approximately 16 times the detector data and 16 times the output
@@ -658,6 +690,10 @@ pixi run test-pipeline
 ```
 
 The receive budget includes the library's bookkeeping as well as payload storage.
+Without `--budget`, each link is sized to hold one scan of corrected frames, at most
+1024 frames (the library's publisher slot limit) and 512 MiB, and never below two
+receive batches. Reconstruction stops receiving while it computes a volume; this lets
+the upstream stages keep working meanwhile instead of stalling on full rings.
 Publisher budgets include room for their payloads and configured subscriber count.
 The summary reports observed pressure, time spent waiting for publisher slots and
 the transport selected on each processing link.
@@ -785,6 +821,8 @@ across distinct output slots and changed scan contents, including cached weight 
 both GPU methods are checked with host-object creation/download helpers disabled.
 Optional GPU block tests compare the actual worker's SIRT and FBP output with both
 whole-volume processing and the independent reference, including a shorter final block.
+`python -m unittest test_fan_in.py` checks scan ordering, pressure, missing scans and
+latest selection across the reconstruction devices of a pull set.
 Run `python -m unittest test_host_buffering.py` for host-buffer budget checks and
 deferred-transfer tests of slot ownership, scan reset, short blocks, backend/layout
 changes and error cleanup. CPU GridRec is compared with GPU-retained scan processing

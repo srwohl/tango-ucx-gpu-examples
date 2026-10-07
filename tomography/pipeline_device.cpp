@@ -42,6 +42,7 @@ struct Options {
     Json scan;
     int gpu = 0, delay_ms = 0, iterations = 40, scan_period_ms = 0;
     int transport_batch = 1, processing_batch = 1;
+    int reconstructors = 1; // above one, the reconstruction devices pull whole scans from correct
     std::string processing_mode = "scalar";
     bool allow_gpu_over_tcp = false;
     std::uint64_t scan_count = 1; // zero: keep the publisher alive until Stop
@@ -110,7 +111,8 @@ public:
         }
         PublisherLimits limits;
         // Independent archive and live-view subscriptions join their respective publishers.
-        limits.max_sessions = cfg.role == "source" || cfg.role == "reconstruct" ? 2 : 1;
+        limits.max_sessions = cfg.role == "source" || cfg.role == "reconstruct" ? 2 :
+                              cfg.role == "correct" ? cfg.reconstructors : 1;
         const auto output_margin = cfg.role == "decompress" ?
             std::max(8, 2 * cfg.processing_batch) : 8;
         limits.budget = std::max<std::uint64_t>(cfg.budget, bytes * output_margin + (192ull << 10));
@@ -144,7 +146,10 @@ public:
             receive.batch = cfg.transport_batch;
             receive.allow_gpu_over_tcp = cfg.allow_gpu_over_tcp;
             receive.label = "tomography-" + cfg.role;
-            input = std::make_unique<Subscription>(every(*proxy, receive));
+            // Correct publishes one frame per projection, so a range of them is one scan. The
+            // receive ring has to hold it: a puller takes a range only with room for all of it.
+            input = std::make_unique<Subscription>(pull_range() ?
+                pull(*proxy, pull_range(), receive) : every(*proxy, receive));
             const auto &d = input->description();
             const auto meta = Json::parse(d.application_text);
             const auto expected = cfg.role == "decompress" ? "source" :
@@ -205,6 +210,7 @@ public:
                     {"publisher_budget_bytes", publisher_budget},
                     {"payload_bytes", output_payload_bytes},
                     {"publisher_slots_free", h.slots_free}, {"publisher_slots_held", h.slots_held},
+                    {"reconstruct_ns", reconstruct_ns.load()},
                     {"publisher_payload_storage_upper_bytes",
                         std::min<std::uint64_t>(1024, publisher_budget / output_payload_bytes) * output_payload_bytes},
                     {"failure", failure.empty() ? h.failure : failure},
@@ -247,6 +253,10 @@ private:
         state["output_mode"] = block_output ? "blocks" : "volume";
         state["output_capacity_slices"] = output_rows;
         return state;
+    }
+    std::uint32_t pull_range() const {
+        return cfg.role == "reconstruct" && cfg.reconstructors > 1 ?
+            cfg.scan.at("angles").get<std::uint32_t>() : 0;
     }
     Slot acquire(std::stop_token stop) {
         const auto begin = std::chrono::steady_clock::now();
@@ -303,6 +313,8 @@ private:
                 auto processor = py::module_::import("processors").attr("Processor")(
                     cfg.role, meta, cfg.gpu, reinterpret_cast<std::uintptr_t>(stream), cfg.iterations);
                 std::uint64_t current_scan = 0, calibration = 0, settings_revision = 0, block_rows = 0;
+                std::uint64_t next_index = 0;
+                const std::uint64_t range = pull_range();
                 try {
                     while(!stop.stop_requested()) {
                         auto batch = [&] {
@@ -314,25 +326,32 @@ private:
                             if(input->outcome()) throw std::runtime_error("upstream ended without End");
                             continue;
                         }
-                        struct Frame { Fields fields{}; std::uint64_t timestamp = 0; };
+                        struct Frame { Fields fields{}; std::uint64_t timestamp = 0, index = 0; };
                         std::vector<Frame> frames(batch->frames());
                         // Public records have two uint64s followed by our 40-byte fields.
                         const auto records = static_cast<const std::byte *>(batch->records());
                         for(std::size_t i = 0; i < frames.size(); ++i) {
-                            if(batch->index(i) != processed.load() + i)
+                            // A puller's next range is any later one; frames within it are consecutive.
+                            frames[i].index = batch->index(i);
+                            if(range && next_index % range == 0 ?
+                                   frames[i].index % range || frames[i].index < next_index :
+                                   frames[i].index != next_index)
                                 throw std::runtime_error("missing or out-of-order upstream frame");
+                            next_index = frames[i].index + 1;
                             const auto record = records + i * (16 + sizeof(Fields));
                             std::memcpy(&frames[i].timestamp, record + 8, 8);
                             std::memcpy(&frames[i].fields, record + 16, sizeof(Fields));
                         }
-                        auto begin_frame = [&](const Fields &fields) {
+                        auto begin_frame = [&](const Frame &first) {
+                            const auto &fields = first.fields;
                             if(fields.scan_id != current_scan) {
                                 if(current_scan) processor.attr("finish")();
+                                const auto scan_number = range ? first.index / range : completed_scans.load();
                                 if(fields.scan_id != cfg.scan.at("scan_id").get<std::uint64_t>() +
-                                       completed_scans.load() || fields.projection != 0 ||
+                                       scan_number || fields.projection != 0 ||
                                    fields.kind != (cfg.role == "reconstruct" ? 2 : 0) ||
                                    fields.calibration_id != cfg.scan.at("calibration_id").get<std::uint64_t>() +
-                                       completed_scans.load())
+                                       scan_number)
                                     throw std::runtime_error("missing scan boundary or calibration");
                                 processor.attr("begin_scan")();
                                 if(cfg.role == "reconstruct") {
@@ -359,13 +378,15 @@ private:
                                cfg.scan.at("angles").get<std::uint64_t>()) {
                                 processor.attr("finish")();
                                 ++completed_scans;
+                                if(cfg.role == "reconstruct")
+                                    reconstruct_ns = processor.attr("reconstruct_ns").cast<std::uint64_t>();
                             }
                         };
                         auto view = std::move(*batch).gpu_view(GpuStream{stream});
                         for(std::size_t frame = 0; frame < frames.size();) {
                             const auto &fields = frames[frame].fields;
                             const auto timestamp = frames[frame].timestamp;
-                            begin_frame(fields);
+                            begin_frame(frames[frame]);
                             if(cfg.role == "decompress" && cfg.processing_mode == "batched") {
                                 auto end = std::min(frames.size(), frame + cfg.processing_batch);
                                 for(auto i = frame + 1; i < end; ++i)
@@ -483,6 +504,7 @@ private:
     std::uint64_t output_rows = 0, publisher_budget = 0, output_payload_bytes = 0;
     std::unique_ptr<ReconstructionSettings> reconstruction;
     std::atomic<std::uint64_t> processed{0}, published{0}, slot_wait_ns{0}, completed_scans{0};
+    std::atomic<std::uint64_t> reconstruct_ns{0};
     std::atomic<bool> finish_requested{false};
     std::string failure;
 };
@@ -560,6 +582,7 @@ int main(int argc, char **argv) {
                 else if(arg == "--budget") cfg.budget = std::stoull(argv[i]);
                 else if(arg == "--transport-batch") cfg.transport_batch = std::stoi(argv[i]);
                 else if(arg == "--processing-batch") cfg.processing_batch = std::stoi(argv[i]);
+                else if(arg == "--reconstructors") cfg.reconstructors = std::stoi(argv[i]);
                 else if(arg == "--processing-mode") cfg.processing_mode = argv[i];
                 else if(arg == "--delay-ms") cfg.delay_ms = std::stoi(argv[i]);
                 else if(arg == "--iterations") cfg.iterations = std::stoi(argv[i]);
@@ -574,6 +597,8 @@ int main(int argc, char **argv) {
         if(cfg.transport_batch < 1 || cfg.transport_batch > 16 ||
            cfg.processing_batch < 1 || cfg.processing_batch > 16)
             throw std::runtime_error("transport and processing batch sizes must be 1 to 16");
+        if(cfg.reconstructors < 1 || cfg.reconstructors > 64)
+            throw std::runtime_error("--reconstructors needs 1 to 64 publisher sessions");
         if(cfg.processing_mode != "scalar" && cfg.processing_mode != "batched")
             throw std::runtime_error("--processing-mode needs scalar or batched");
         std::ifstream scan(cfg.file);

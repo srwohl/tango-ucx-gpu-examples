@@ -211,6 +211,21 @@ class ControlHTTPTests(unittest.TestCase):
         self.assertEqual([command for command, _ in self.proxy.calls],
                          ["GetReconstruction", "GetReconstruction", "ConfigureReconstruction", "GetReconstruction"])
 
+    def test_a_pull_set_shares_settings_and_answers_for_the_device_that_took_a_scan(self):
+        other = type(self.proxy)()
+        self.proxy.state["active"] = dict(scan_id=11, revision=0)
+        other.state["active"] = dict(scan_id=12, revision=0)
+        control = ReconstructionControl(self.proxy, other)
+        state = control.configure(dict(algorithm="fbp", filter="hann"))
+        self.assertEqual(state["requested"]["options"]["filter"], "hann")
+        self.assertEqual(state["active"]["scan_id"], 12)
+        self.assertFalse(state["finished"])
+        for proxy in (self.proxy, other):
+            self.assertEqual(proxy.state["requested"]["revision"], 1)
+        control.for_scan(12, 1)
+        self.assertEqual(other.calls[-1], ("ReconstructionForScan", "12"))
+        self.assertNotIn(("ReconstructionForScan", "12"), self.proxy.calls)
+
     def test_invalid_settings_do_not_reach_the_device_update(self):
         for options in ([], {"algorithm": "gridrec", "center": 65},
                         {"algorithm": "sirt", "min_constraint": 2, "max_constraint": 1},

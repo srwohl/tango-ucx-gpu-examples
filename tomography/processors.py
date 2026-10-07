@@ -1,4 +1,6 @@
 """GPU processing and selectable reconstruction; C++ owns transport allocations."""
+import time
+
 import cupy as cp
 import numpy as np
 from nvidia import nvcomp
@@ -33,6 +35,11 @@ class Processor:
         self.begin_scan()
         with self.stream:
             if role == "decompress":
+                # nvCOMP allocates pinned host scratch in every decode call, which costs more than
+                # the decoding. Reuse it from a pool, once the copies queued from it have run.
+                self.pinned = cp.cuda.PinnedMemoryPool()
+                self.released, self.queued = [], []
+                nvcomp.set_pinned_allocator(self._pinned_scratch)
                 self.codec = nvcomp.Codec(algorithm="LZ4", cuda_stream=stream_pointer,
                                          bitstream_kind=nvcomp.BitstreamKind.RAW, device_id=gpu)
                 self.decoding = self.codec.decompression_config(
@@ -48,6 +55,7 @@ class Processor:
                     "attenuation = -logf(fminf(1.0f, fmaxf(1e-6f, t)));",
                     f"tomography_dark_flat_log_{element}")
             else:
+                self.reconstruct_ns = 0
                 self.buffer_plan = memory_plan(scan, self.reconstruction)
                 if self.buffer_plan["sinogram_memory"] == "host":
                     self.host_buffer = HostScanBuffer(scan, cp, self.stream)
@@ -56,6 +64,26 @@ class Processor:
                 else:
                     self.sinogram = cp.empty((scan["rows"], scan["angles"], scan["columns"]),
                                              dtype=cp.float32)
+
+    def _pinned_scratch(self, nbytes, stream):
+        released = self.released
+
+        class Scratch:
+            def __init__(self, memory):
+                self.memory, self.ptr = memory, memory.ptr
+
+            def __del__(self):
+                released.append(self.memory)
+        return Scratch(self.pinned.malloc(nbytes))
+
+    def _reuse_scratch(self):
+        """After a decode call: its scratch returns to the pool when the stream reaches here."""
+        event = cp.cuda.Event()
+        event.record(self.stream)
+        self.queued.append((event, self.released[:]))
+        self.released.clear()
+        while self.queued and self.queued[0][0].done:
+            self.queued.pop(0)
 
     def begin_scan(self):
         if hasattr(self, "host_buffer"):
@@ -232,6 +260,7 @@ class Processor:
                 output = array_at(output_pointer, (self.detector_frame_bytes,), cp.uint8, self.gpu)
                 self.codec.decode(nvcomp.as_array(compressed, cuda_stream=self.stream.ptr),
                                   out=output, decompression_config=self.decoding)
+                self._reuse_scratch()
                 self.received += 1
                 return
             dtype = self.detector_dtype if self.role == "correct" else cp.float32
@@ -267,7 +296,9 @@ class Processor:
                     output = array_at(output_pointer,
                                       (self.scan["rows"], self.scan["columns"], self.scan["columns"]),
                                       cp.float32, self.gpu)
+                    begin = time.perf_counter_ns()
                     self.reconstruct(output)
+                    self.reconstruct_ns += time.perf_counter_ns() - begin
             self.projections += 1
 
     def consume_many(self, frames):
@@ -312,6 +343,7 @@ class Processor:
                 outputs.append(array_at(output_pointer, (self.detector_frame_bytes,),
                                         cp.uint8, self.gpu))
             self.codec.decode(sources, out=outputs, decompression_config=self.batch_decoding[count])
+            self._reuse_scratch()
             self.received += count
 
     def finish(self):

@@ -18,38 +18,41 @@ sys.path.insert(0, str(HERE.parent))
 from network import environment
 from reconstruction import live_configuration
 from pipeline_control import PipelineControl, PipelineConflict
+from fan_in import NewestVolumes
 from output_blocks import LatestCompleted, OutputCollector, read_complete
 
 
 class ReconstructionControl:
-    """Serialize HTTP and receive-thread access to a dedicated Tango proxy."""
+    """Serialize HTTP and receive-thread access to dedicated Tango proxies.
 
-    def __init__(self, proxy):
-        self.proxy = proxy
+    Every reconstructor of a pull set receives the same settings in the same order, so their
+    revisions agree. Each applies them to the next scan it takes.
+    """
+
+    def __init__(self, *proxies):
+        self.proxies = proxies
         self.lock = threading.Lock()
+
+    def _each(self, command, *argument):
+        """One state: the requested settings are common, the active scan is the newest started."""
+        states = [json.loads(proxy.command_inout(command, *argument)) for proxy in self.proxies]
+        started = [state["active"] for state in states if state["active"] is not None]
+        return dict(states[0], finished=all(state["finished"] for state in states),
+                    active=max(started, key=lambda active: active["scan_id"]) if started else None)
 
     def settings(self):
         with self.lock:
-            return json.loads(self.proxy.command_inout("GetReconstruction"))
+            return self._each("GetReconstruction")
 
     def configure(self, options):
         with self.lock:
-            state = json.loads(self.proxy.command_inout("GetReconstruction"))
-            options = live_configuration(options, state["detector_columns"])
-            return json.loads(self.proxy.command_inout("ConfigureReconstruction", json.dumps(options)))
+            columns = self._each("GetReconstruction")["detector_columns"]
+            return self._each("ConfigureReconstruction", json.dumps(live_configuration(options, columns)))
 
-    def for_scan(self, scan_id):
+    def for_scan(self, scan_id, reconstructor=0):
+        """Settings of a scan, held by the device that reconstructed it."""
         with self.lock:
-            return json.loads(self.proxy.command_inout("ReconstructionForScan", str(scan_id)))
-
-
-def read_next(sub):
-    # No ring-backed arrays or records escape this call.
-    batch = sub.read(timeout=0.1)
-    if batch is None:
-        return None
-    return (batch.array[-1].copy(), int(batch.records[-1]["scan_id"]),
-            int(batch.records[-1]["index"]))
+            return json.loads(self.proxies[reconstructor].command_inout("ReconstructionForScan", str(scan_id)))
 
 
 def display_voxels(volume, display_max=0.01, *, inplace=False):
@@ -266,7 +269,7 @@ def make_handler(history, output, control=None, pipeline_control=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("device")
+    parser.add_argument("devices", nargs="+", help="the reconstruction device, or each one of a pull set")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--control-dir", type=Path, help="common pipeline restart control directory")
     parser.add_argument("--port", type=int, default=8765)
@@ -287,13 +290,20 @@ def main():
     import tango
     import tango_ucx
 
+    if args.output_mode == "blocks" and len(args.devices) > 1:
+        parser.error("block output uses one reconstruction device")
     subscribe = tango_ucx.every if args.output_mode == "blocks" else tango_ucx.latest
-    sub = subscribe(tango.DeviceProxy(args.device), memory="host", budget=args.budget,
-                          batch=1, label="tomography-live-view")
-    proxy = tango.DeviceProxy(args.device)
-    proxy.set_timeout_millis(60000)
-    control = ReconstructionControl(proxy)
-    collector = OutputCollector.from_description(sub.description, control.for_scan, storage_volumes=3)
+    subscriptions = [subscribe(tango.DeviceProxy(device), memory="host", budget=args.budget,
+                               batch=1, label="tomography-live-view") for device in args.devices]
+    proxies = [tango.DeviceProxy(device) for device in args.devices]
+    for proxy in proxies:
+        proxy.set_timeout_millis(60000)
+    control = ReconstructionControl(*proxies)
+    description = subscriptions[0].description
+    collector = OutputCollector.from_description(description, control.for_scan, storage_volumes=3)
+    # Blocks arrive in order from one device; whole volumes come from any device of the set.
+    sub = subscriptions[0] if collector is not None else NewestVolumes(
+        subscriptions, json.loads(description["application_text"])["scan_id"])
     if (collector is not None) != (args.output_mode == "blocks"):
         sub.close()
         raise ValueError("viewer output mode differs from reconstruction description")
@@ -324,7 +334,7 @@ def main():
             while True:
                 if display_failure:
                     raise display_failure[0]
-                result = read_complete(sub, collector) if collector is not None else read_next(sub)
+                result = read_complete(sub, collector) if collector is not None else sub.read()
                 if result is None:
                     if sub.outcome is not None:
                         break
@@ -334,8 +344,9 @@ def main():
                     history.update(assembled_volumes=collector.completed)
                     result = None
                 else:
-                    volume, scan_id, frame_index = result
-                    history.append(volume, scan_id, frame_index, sub.health(), control.for_scan(scan_id))
+                    volume, scan_id, frame_index, reconstructor = result
+                    history.append(volume, scan_id, frame_index, sub.health(),
+                                   control.for_scan(scan_id, reconstructor))
                     if args.delay:
                         time.sleep(args.delay)  # Latest delivery may skip; it applies no pressure.
             if collector is not None:
