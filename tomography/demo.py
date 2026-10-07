@@ -46,6 +46,14 @@ def reconstructor_names(args):
         f"reconstruct-{index}" for index in range(args.reconstructors)]
 
 
+def stage_names(args):
+    """Device names per stage. Several chains each have their own decompress, correct and reconstruct."""
+    if args.chains > 1:
+        return {role: [f"{role}-{index}" for index in range(args.chains)]
+                for role in ("decompress", "correct", "reconstruct")}
+    return dict(decompress=["decompress"], correct=["correct"], reconstruct=reconstructor_names(args))
+
+
 def combined_report(reports):
     """One reconstruction stage report: counts and times are sums over the pull set."""
     result = dict(reports[0])
@@ -60,7 +68,7 @@ def combined_report(reports):
 
 
 def device_command(args, role, output, port, name, devices):
-    role = role.partition("-")[0]
+    role, _, index = role.partition("-")
     gpu = args.gpu if role == "source" else getattr(args, f"{role}_gpu")
     command = [str(args.device_server.resolve()), "local", "-nodb", "-dlist", name,
                "-ORBendPoint", f"giop:tcp:127.0.0.1:{port}",
@@ -69,13 +77,15 @@ def device_command(args, role, output, port, name, devices):
                "--allow-gpu-over-tcp", "0" if args.network == "rdma" else "1",
                "--transport-batch", str(args.transport_batch),
                "--processing-batch", str(args.processing_batch),
-               "--reconstructors", str(args.reconstructors),
+               "--reconstructors", str(args.reconstructors), "--chains", str(args.chains),
                "--processing-mode", args.processing_mode,
                "--iterations", str(args.iterations), "--scans", str(args.scans),
                "--scan-period-ms", str(round(args.scan_period * 1000))]
     if role != "source":
         upstream = {"decompress": "source", "correct": "decompress",
                     "reconstruct": "correct"}[role]
+        if args.chains > 1 and upstream != "source":
+            upstream = f"{upstream}-{index}"
         command.extend(["--upstream", devices[upstream]])
     if role == "correct":
         command.extend(["--delay-ms", str(args.correction_delay_ms)])
@@ -94,7 +104,7 @@ def workload_description(args, scan):
                 volume_bytes=args.slices * args.pixels**2 * 4,
                 reconstruction=scan["reconstruction"], iterations=scan["reconstruction"]["iterations"],
                 buffering=dict(scan.get("buffering", {}), memory_plan=memory_plan(scan, scan["reconstruction"])),
-                scan_period_seconds=args.scan_period, reconstructors=args.reconstructors,
+                scan_period_seconds=args.scan_period, reconstructors=args.reconstructors, chains=args.chains,
                 receive_budget_bytes=args.budget, source=scan["source"],
                 stage_gpus={role: getattr(args, f"{role}_gpu")
                             for role in ("decompress", "correct", "reconstruct")})
@@ -207,8 +217,9 @@ def run(args, output, stop_requested, env):
     pressure = set()
     with ExitStack() as cleanup:
         volume_settings = cleanup.enter_context((output / "volume-settings.jsonl").open("w"))
-        reconstructors = reconstructor_names(args)
-        for role in ("source", "decompress", "correct", *reconstructors):
+        stages = stage_names(args)
+        reconstructors = stages["reconstruct"]
+        for role in ("source", *stages["decompress"], *stages["correct"], *reconstructors):
             port = free_port()
             name = f"example/tomography/{role}"
             devices[role] = f"127.0.0.1:{port}/{name}#dbase=no"
@@ -239,7 +250,7 @@ def run(args, output, stop_requested, env):
                  for role, device in devices.items()},
                 indent=2))
             # Join every link before any publisher starts. Start downstream first.
-            for role in (*reconstructors, "correct", "decompress", "source"):
+            for role in (*reconstructors, *stages["correct"], *stages["decompress"], "source"):
                 proxies[role].command_inout("Arm")
             volume_budget = max(args.budget, memory_plan(scan, scan["reconstruction"])["gpu_output_bytes"] * 4 + 131072)
             volumes = [tango_ucx.every(proxies[role], memory="host", budget=volume_budget,
@@ -288,7 +299,7 @@ def run(args, output, stop_requested, env):
                 print(json.dumps(dict(live_view=live_url, output=str(output))), flush=True)
                 if not args.no_browser:
                     webbrowser.open(live_url)
-            for role in (*reconstructors, "correct", "decompress", "source"):
+            for role in (*reconstructors, *stages["correct"], *stages["decompress"], "source"):
                 proxies[role].command_inout("Start")
             if getattr(args, "_control_dir", None) is not None:
                 state_path = args._control_dir / "pipeline-control.json"
@@ -336,7 +347,9 @@ def run(args, output, stop_requested, env):
                 for role, report in result.items():
                     if report["failure"] or report["input_failure"] or report["quarantined_bytes"]:
                         raise RuntimeError(f"{role} failed: {report}")
-                result["reconstruct"] = combined_report([result.pop(role) for role in reconstructors])
+                for stage, names in stages.items():
+                    combined = combined_report([result.pop(role) for role in names])
+                    result[stage] = combined if len(names) > 1 or stage == "reconstruct" else combined["reconstructors"][0]
                 return result
 
             while True:
@@ -556,6 +569,17 @@ def pipeline_args(args, options, reconstruction=None):
 
 def pull_set(args):
     """Reject a pull set the transport would refuse; each reconstructor takes one scan at a turn."""
+    if args.chains > 1:
+        # Experimental: each chain's decompress device pulls whole scans from the source.
+        if args.reconstructors > 1 or args.output_mode == "blocks":
+            raise ValueError("several chains use one reconstructor each and whole-volume output")
+        if (args.angles + 2) % args.transport_batch:
+            raise ValueError("several chains need the frames per scan (projections + 2) to be a multiple "
+                             "of the transport batch")
+        required = scan_ring_budget(args.slices, args.pixels, args.angles + 2, args.transport_batch)
+        if required is None or args.budget < required:
+            raise ValueError("several chains need a receive budget holding one scan")
+        return
     if args.reconstructors == 1:
         return
     if args.output_mode == "blocks":
@@ -631,6 +655,9 @@ def parse_args(argv=None):
     parser.add_argument("--reconstructors", type=int, choices=range(1, MAX_RECONSTRUCTORS + 1), default=1,
                         help="reconstruction devices sharing the corrected scans, one scan at a turn "
                         "(default 1); run NVIDIA MPS to share one GPU between them")
+    parser.add_argument("--chains", type=int, choices=range(1, 5), default=1,
+                        help="experimental: parallel decompress-correct-reconstruct chains, each taking "
+                        "whole scans from the source (default 1)")
     parser.add_argument("--output-mode", choices=("volume", "blocks"), default="volume",
                         help="GPU publications: whole volume or bounded slice blocks (default volume)")
     parser.add_argument("--output-host-mib", type=int, default=1024,
@@ -715,8 +742,8 @@ def parse_args(argv=None):
             setattr(args, name, value)
     if args.budget is None:
         args.budget = link_budget(args.slices, args.pixels, args.angles, args.transport_batch)[0]
-        if args.reconstructors > 1:
-            args.budget = max(args.budget, scan_ring_budget(args.slices, args.pixels, args.angles,
+        if args.reconstructors > 1 or args.chains > 1:
+            args.budget = max(args.budget, scan_ring_budget(args.slices, args.pixels, args.angles + 2,
                                                             args.transport_batch) or 0)
     try:
         pull_set(args)

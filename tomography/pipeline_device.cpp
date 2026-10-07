@@ -43,6 +43,7 @@ struct Options {
     int gpu = 0, delay_ms = 0, iterations = 40, scan_period_ms = 0;
     int transport_batch = 1, processing_batch = 1;
     int reconstructors = 1; // above one, the reconstruction devices pull whole scans from correct
+    int chains = 1; // above one, each decompress device pulls whole scans and feeds its own chain
     std::string processing_mode = "scalar";
     bool allow_gpu_over_tcp = false;
     std::uint64_t scan_count = 1; // zero: keep the publisher alive until Stop
@@ -111,7 +112,7 @@ public:
         }
         PublisherLimits limits;
         // Independent archive and live-view subscriptions join their respective publishers.
-        limits.max_sessions = cfg.role == "source" || cfg.role == "reconstruct" ? 2 :
+        limits.max_sessions = cfg.role == "source" ? 1 + cfg.chains : cfg.role == "reconstruct" ? 2 :
                               cfg.role == "correct" ? cfg.reconstructors : 1;
         const auto output_margin = cfg.role == "decompress" ?
             std::max(8, 2 * cfg.processing_batch) : 8;
@@ -255,6 +256,9 @@ private:
         return state;
     }
     std::uint32_t pull_range() const {
+        // The source publishes a dark, a flat and the projections of each scan.
+        if(cfg.role == "decompress" && cfg.chains > 1)
+            return cfg.scan.at("angles").get<std::uint32_t>() + 2;
         return cfg.role == "reconstruct" && cfg.reconstructors > 1 ?
             cfg.scan.at("angles").get<std::uint32_t>() : 0;
     }
@@ -346,7 +350,12 @@ private:
                             const auto &fields = first.fields;
                             if(fields.scan_id != current_scan) {
                                 if(current_scan) processor.attr("finish")();
-                                const auto scan_number = range ? first.index / range : completed_scans.load();
+                                // Within a chain the frames are consecutive but its scans are not.
+                                const auto base = cfg.scan.at("scan_id").get<std::uint64_t>();
+                                if(cfg.chains > 1 && (fields.scan_id < base || fields.scan_id <= current_scan))
+                                    throw std::runtime_error("scan identity did not advance");
+                                const auto scan_number = range ? first.index / range :
+                                    cfg.chains > 1 ? fields.scan_id - base : completed_scans.load();
                                 if(fields.scan_id != cfg.scan.at("scan_id").get<std::uint64_t>() +
                                        scan_number || fields.projection != 0 ||
                                    fields.kind != (cfg.role == "reconstruct" ? 2 : 0) ||
@@ -583,6 +592,7 @@ int main(int argc, char **argv) {
                 else if(arg == "--transport-batch") cfg.transport_batch = std::stoi(argv[i]);
                 else if(arg == "--processing-batch") cfg.processing_batch = std::stoi(argv[i]);
                 else if(arg == "--reconstructors") cfg.reconstructors = std::stoi(argv[i]);
+                else if(arg == "--chains") cfg.chains = std::stoi(argv[i]);
                 else if(arg == "--processing-mode") cfg.processing_mode = argv[i];
                 else if(arg == "--delay-ms") cfg.delay_ms = std::stoi(argv[i]);
                 else if(arg == "--iterations") cfg.iterations = std::stoi(argv[i]);
@@ -597,6 +607,8 @@ int main(int argc, char **argv) {
         if(cfg.transport_batch < 1 || cfg.transport_batch > 16 ||
            cfg.processing_batch < 1 || cfg.processing_batch > 16)
             throw std::runtime_error("transport and processing batch sizes must be 1 to 16");
+        if(cfg.chains < 1 || cfg.chains > 63)
+            throw std::runtime_error("--chains needs 1 to 63");
         if(cfg.reconstructors < 1 || cfg.reconstructors > 64)
             throw std::runtime_error("--reconstructors needs 1 to 64 publisher sessions");
         if(cfg.processing_mode != "scalar" && cfg.processing_mode != "batched")
