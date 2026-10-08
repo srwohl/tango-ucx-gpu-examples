@@ -15,6 +15,7 @@ class DetectorProcessorTests(unittest.TestCase):
             ptr = 1
             def __enter__(self): return self
             def __exit__(self, *_): pass
+            def synchronize(self): pass
 
         class Codec:
             def __init__(self, **options):
@@ -151,7 +152,7 @@ class DetectorProcessorTests(unittest.TestCase):
             processor.consume_many(frames[4:])
             processor.finish()
         self.assertEqual(processor.received, 6)
-        self.assertEqual(processor.compressed_batch.shape, (16, 256))
+        self.assertEqual(processor.compressed_batch.shape, (4, 256))
         self.assertEqual(set(processor.batch_decoding), {2, 4})
         for index, raw in enumerate(expected):
             np.testing.assert_array_equal(pointers[index + 101].view(np.uint16).reshape(raw.shape), raw)
@@ -190,7 +191,7 @@ class DetectorProcessorTests(unittest.TestCase):
                 borrowed.assert_not_called()
                 self.assertEqual(processor.received, 0)
         with self.assertRaisesRegex(ValueError, "capacity"):
-            processor.consume_many([valid] * 17)
+            processor.consume_many([valid] * (module.MAX_BATCH + 1))
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import numpy as np
 from nvidia import nvcomp
 
 from host_buffering import BlockTransfers, HostScanBuffer, memory_plan
+from pipeline_control import MAX_BATCH
 from reconstruction import SirtGPU, configuration, fbp_gpu, gridrec, postprocess, slice_blocks
 
 
@@ -313,8 +314,8 @@ class Processor:
             for frame in frames:
                 self.consume(*frame)
             return
-        if len(frames) > 16:
-            raise ValueError("decompression batch exceeds the supported capacity of 16")
+        if len(frames) > MAX_BATCH:
+            raise ValueError(f"decompression batch exceeds the supported capacity of {MAX_BATCH}")
         # Reject the whole group before queuing reads or changing scan counters.
         for index, (_, nbytes, _, kind, projection, _) in enumerate(frames):
             received = self.received + index
@@ -328,10 +329,13 @@ class Processor:
                 raise ValueError("compressed batch extends beyond the scan")
         with self.stream:
             if not hasattr(self, "compressed_batch"):
-                stride = ((self.compressed.nbytes + 255) // 256) * 256
-                self.compressed_batch = cp.empty((16, stride), dtype=cp.uint8)
-                self.batch_decoding = {}
+                self.compressed_batch, self.batch_decoding = cp.empty((0, 0), dtype=cp.uint8), {}
             count = len(frames)
+            if count > len(self.compressed_batch):
+                # Sized for the largest batch seen; queued reads of the smaller scratch end first.
+                self.stream.synchronize()
+                stride = ((self.compressed.nbytes + 255) // 256) * 256
+                self.compressed_batch = cp.empty((count, stride), dtype=cp.uint8)
             if count not in self.batch_decoding:
                 self.batch_decoding[count] = self.codec.decompression_config(
                     self.codec.compression_config([self.detector_frame_bytes] * count))

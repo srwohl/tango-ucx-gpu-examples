@@ -5,7 +5,7 @@ import tempfile
 import threading
 import unittest
 
-from pipeline_control import (AUTO_LINK_BYTES, MAX_BUFFERED_FRAMES, MAX_GPU_RING_FRAMES, MAX_RECONSTRUCTORS,
+from pipeline_control import (AUTO_LINK_BYTES, MAX_BATCH, MAX_BUFFERED_FRAMES, MAX_GPU_RING_FRAMES, MAX_RECONSTRUCTORS,
                               PipelineConflict, PipelineControl, atomic_json, link_budget, scan_ring_budget,
                               validate_options)
 
@@ -35,7 +35,7 @@ class ValidationTests(unittest.TestCase):
                    {"sinogram_memory": "cuda"}, {"output_mode": "latest"},
                    {"net_devices": 1}, {"net_devices": ""}, {"net_devices": "lo\n"}]
         for key in ("transport_batch", "processing_batch"):
-            invalid += [{key: value} for value in (0, 17, 1.5, True)]
+            invalid += [{key: value} for value in (0, MAX_BATCH + 1, 1.5, True)]
         for key in ("gpu", "decompress_gpu", "correct_gpu", "reconstruct_gpu"):
             invalid += [{key: value} for value in (-1, 2, 0.0, True)]
         for key in ("host_buffer_mib", "pinned_buffer_mib", "output_host_mib", "pixels", "slices", "angles"):

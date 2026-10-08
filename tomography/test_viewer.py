@@ -12,7 +12,7 @@ import urllib.request
 import numpy as np
 from PIL import Image
 
-from pipeline_control import PipelineControl, atomic_json
+from pipeline_control import MAX_BATCH, PipelineControl, atomic_json
 from test_pipeline_control import running_state
 from reconstruction import configuration
 from viewer import ReconstructionControl, VolumeHistory, display_voxels, make_handler
@@ -294,7 +294,7 @@ class PipelineHTTPTests(unittest.TestCase):
 
     def test_cross_origin_invalid_and_unavailable_controls_are_rejected(self):
         for options, headers, status in [({"gpu": True}, {}, 400),
-                ({"transport_batch": 17}, {}, 400), ({"unknown": 1}, {}, 400),
+                ({"transport_batch": MAX_BATCH + 1}, {}, 400), ({"unknown": 1}, {}, 400),
                 ({"network": "tcp"}, {"Origin": "http://elsewhere.invalid"}, 403)]:
             with self.subTest(options=options), self.assertRaises(urllib.error.HTTPError) as result:
                 self.post(options, **headers)

@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import urllib.request
 import webbrowser
 
@@ -20,10 +21,10 @@ sys.path.insert(0, str(ROOT))
 from network import environment
 from scan import from_hdf5, generate, hdf5_dimensions, selection
 from reconstruction import ALGORITHMS, FILTERS, configuration, reference_reconstruction
-from host_buffering import memory_plan
+from host_buffering import memory_plan, pinned_empty
 from fan_in import OrderedVolumes
 from output_blocks import OutputCollector, read_complete
-from pipeline_control import (MAX_GPU_RING_FRAMES, MAX_RECONSTRUCTORS, atomic_json, link_budget,
+from pipeline_control import (MAX_BATCH, MAX_GPU_RING_FRAMES, MAX_RECONSTRUCTORS, atomic_json, link_budget,
                               scan_ring_budget, validate_options)
 
 DEFAULT_WORKLOAD = dict(pixels=64, slices=8, angles=96, scan_period=1)
@@ -147,6 +148,36 @@ def stop(process):
             process.wait(timeout=5)
 
 
+class DownloadedVolumes:
+    """A GPU subscription read as host batches; the array is reused, so copy it before the next read.
+
+    A host subscriber makes UCX copy each volume out of the GPU in 8 KiB shared-memory
+    fragments. Here it arrives in one device copy and leaves in one pinned download.
+    """
+
+    def __init__(self, sub, cp, gpu):
+        self.sub, self.cp, self.device = sub, cp, cp.cuda.Device(gpu)
+        with self.device:
+            self.stream = cp.cuda.Stream(non_blocking=True)
+        self.host = None
+
+    def __getattr__(self, name):
+        return getattr(self.sub, name)
+
+    def read(self, timeout=None):
+        batch = self.sub.read(timeout=timeout)
+        if batch is None:
+            return None
+        with self.device, self.stream, batch.gpu_view(stream=self.stream.ptr) as view:
+            tensor = self.cp.from_dlpack(view)
+            if self.host is None:
+                self.host = pinned_empty(self.cp, tensor.shape)
+            # A blocking download: no read of the receive slots outlives the view.
+            tensor.get(out=self.host, stream=self.stream)
+            del tensor
+        return SimpleNamespace(frames=batch.frames, records=batch.records.copy(), array=self.host)
+
+
 def verify_archive(output, scan, completed_scans):
     """Bounded-memory verification even after an arbitrarily long looping run."""
     with (output / "archive" / "payloads.bin").open("rb") as archived, \
@@ -253,8 +284,13 @@ def run(args, output, stop_requested, env):
             for role in (*reconstructors, *stages["correct"], *stages["decompress"], "source"):
                 proxies[role].command_inout("Arm")
             volume_budget = max(args.budget, memory_plan(scan, scan["reconstruction"])["gpu_output_bytes"] * 4 + 131072)
-            volumes = [tango_ucx.every(proxies[role], memory="host", budget=volume_budget,
+            # TCP has no cuda_ipc, so its writer receives on host. Otherwise it receives on the
+            # reconstruction GPU; either ring is how far reconstruction may run ahead of the writer.
+            memory = "host" if args.network == "tcp" else f"cuda:{args.reconstruct_gpu}"
+            volumes = [tango_ucx.every(proxies[role], memory=memory, budget=volume_budget,
                                        batch=1, label="volume-writer") for role in reconstructors]
+            if memory != "host":
+                volumes = [DownloadedVolumes(sub, cp, args.reconstruct_gpu) for sub in volumes]
             # Block output has one reconstructor; whole volumes are put back in scan order.
             block_volume = volumes[0]
             volume = OrderedVolumes(volumes, scan["scan_id"], scan["calibration_id"])
@@ -699,10 +735,10 @@ def parse_args(argv=None):
     parser.add_argument("--network", "--profile", choices=("tcp", "rdma", "auto"), default="tcp",
                         help="UCX profile: local TCP, RC/CUDA without TCP fallback, or automatic selection")
     parser.add_argument("--net-devices", help="UCX interface or HCA:port; TCP defaults to lo, others to UCX selection")
-    parser.add_argument("--transport-batch", type=int, choices=range(1, 17), default=1,
-                        help="maximum frames per UCX receive batch")
-    parser.add_argument("--processing-batch", type=int, choices=range(1, 17), default=1,
-                        help="maximum frames per batched decompression call")
+    parser.add_argument("--transport-batch", type=int, choices=range(1, MAX_BATCH + 1), default=1, metavar="N",
+                        help=f"maximum frames per UCX receive batch (1 to {MAX_BATCH})")
+    parser.add_argument("--processing-batch", type=int, choices=range(1, MAX_BATCH + 1), default=1, metavar="N",
+                        help=f"maximum frames per batched decompression call (1 to {MAX_BATCH})")
     parser.add_argument("--processing-mode", choices=("scalar", "batched"), default="scalar",
                         help="scalar calls or nvCOMP batch decompression")
     parser.add_argument("--budget", type=int, help="per-link receive and publish budget in bytes (default: one scan, at most 512 MiB)")

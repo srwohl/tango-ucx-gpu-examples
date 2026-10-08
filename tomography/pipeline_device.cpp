@@ -604,9 +604,10 @@ int main(int argc, char **argv) {
         if(cfg.role != "source" && cfg.role != "decompress" &&
            cfg.role != "correct" && cfg.role != "reconstruct")
             throw std::runtime_error("--role needs source, decompress, correct or reconstruct");
-        if(cfg.transport_batch < 1 || cfg.transport_batch > 16 ||
-           cfg.processing_batch < 1 || cfg.processing_batch > 16)
-            throw std::runtime_error("transport and processing batch sizes must be 1 to 16");
+        // MAX_BATCH in pipeline_control.py: twice a batch of output slots within the publisher's 1024.
+        if(cfg.transport_batch < 1 || cfg.transport_batch > 512 ||
+           cfg.processing_batch < 1 || cfg.processing_batch > 512)
+            throw std::runtime_error("transport and processing batch sizes must be 1 to 512");
         if(cfg.chains < 1 || cfg.chains > 63)
             throw std::runtime_error("--chains needs 1 to 63");
         if(cfg.reconstructors < 1 || cfg.reconstructors > 64)

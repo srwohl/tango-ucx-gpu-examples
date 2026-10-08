@@ -28,6 +28,9 @@ AUTO_LINK_BYTES = 512 * 1024**2
 MAX_GPU_RING_FRAMES = 4096
 # Each reconstructor is a process with its own CUDA context, sinogram and output slots.
 MAX_RECONSTRUCTORS = 8
+# Batched decompression holds a publisher slot per frame and keeps as many again free, within
+# tango-ucx's 1024 slots. pipeline_device.cpp checks the same bound.
+MAX_BATCH = 512
 
 
 def link_budget(rows, columns, angles, transport_batch, detector_element="u16"):
@@ -77,7 +80,7 @@ def validate_options(options, gpu_count=None):
             if type(value) is not int:
                 raise ValueError(f"{key} must be an integer")
             minimum = 0 if key in GPU_KEYS else 1
-            maximum = 16 if key in BATCH_KEYS else MAX_RECONSTRUCTORS if key == "reconstructors" else None
+            maximum = MAX_BATCH if key in BATCH_KEYS else MAX_RECONSTRUCTORS if key == "reconstructors" else None
             if value < minimum or (maximum is not None and value > maximum):
                 raise ValueError(f"{key} must be {f'1..{maximum}' if maximum else f'at least {minimum}'}")
             if key in GPU_KEYS and gpu_count is not None and value >= gpu_count:
