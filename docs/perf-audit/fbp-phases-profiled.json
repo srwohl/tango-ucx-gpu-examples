@@ -1,0 +1,99 @@
+{
+  "shape": {
+    "angles": 360,
+    "columns": 512
+  },
+  "cupy": "14.2.0",
+  "astra": "2.5.0",
+  "results": [
+    {
+      "rows": 32,
+      "filter_rows": 32,
+      "seconds": [
+        0.05641140800071298
+      ],
+      "median_seconds": 0.05641140800071298,
+      "boundaries": {
+        "astra.link": {
+          "calls": 2,
+          "host_ns": 899459
+        },
+        "astra.create": {
+          "calls": 1,
+          "host_ns": 103508
+        },
+        "filter.rfft": {
+          "calls": 1,
+          "host_ns": 301937
+        },
+        "filter.irfft": {
+          "calls": 1,
+          "host_ns": 260087
+        },
+        "astra.run": {
+          "calls": 32,
+          "host_ns": 46249144
+        },
+        "handoff.device_sync": {
+          "calls": 32,
+          "host_ns": 235003
+        },
+        "astra.delete": {
+          "calls": 1,
+          "host_ns": 11863
+        },
+        "instrumented.rows32.filter32": {
+          "calls": 1,
+          "host_ns": 60749751
+        }
+      },
+      "reference_max_abs_error": 3.632158041000366e-08,
+      "validated": true
+    },
+    {
+      "rows": 128,
+      "filter_rows": 32,
+      "seconds": [
+        0.18574701599936816
+      ],
+      "median_seconds": 0.18574701599936816,
+      "boundaries": {
+        "astra.link": {
+          "calls": 2,
+          "host_ns": 641216
+        },
+        "astra.create": {
+          "calls": 1,
+          "host_ns": 54704
+        },
+        "filter.rfft": {
+          "calls": 4,
+          "host_ns": 621369
+        },
+        "filter.irfft": {
+          "calls": 4,
+          "host_ns": 590788
+        },
+        "astra.run": {
+          "calls": 128,
+          "host_ns": 149400804
+        },
+        "handoff.device_sync": {
+          "calls": 128,
+          "host_ns": 869491
+        },
+        "astra.delete": {
+          "calls": 1,
+          "host_ns": 11692
+        },
+        "instrumented.rows128.filter32": {
+          "calls": 1,
+          "host_ns": 185458785
+        }
+      },
+      "reference_max_abs_error": 3.725290298461914e-08,
+      "validated": true
+    }
+  ],
+  "scope": "GPU-resident production FBP only; uploads and reference verification outside timing. Baseline has outer NVTX labels only. Instrumented boundary host times include wrapper overhead and asynchronous submission, not isolated GPU execution; nested ranges must not be summed."
+}

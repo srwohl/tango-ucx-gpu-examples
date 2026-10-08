@@ -151,8 +151,8 @@ device needs a rule for a scan that begins with no free store:
 - `hold` (a replayed file): stop reading and let pressure hold the source.
 
 The ownership rules are those of the earlier experiment, which already ran this shape on a
-generated copy of the device (`perf-audit/SCAN-OVERLAP-FOLLOWUP.md`, kept outside this
-repository): the receive view lives until its last queued read, a per-store event orders
+generated copy of the device
+([the scan-overlap report](../docs/perf-audit/SCAN-OVERLAP-FOLLOWUP.md)): the receive view lives until its last queued read, a per-store event orders
 reconstruction after ingest, and a store is reused only after its last block is published.
 At the prototype's size that experiment gained 3.6 to 3.8%, inside the run-to-run variation.
 The reason to build it now is the skip rule, not speed.

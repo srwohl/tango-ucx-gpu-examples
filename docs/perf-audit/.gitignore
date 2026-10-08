@@ -1,0 +1,12 @@
+# Run outputs the reports do not cite by content: detector archives, volumes and references.
+archive/
+*.bin
+*.npy
+*.npz
+# Nsight traces and their exports, about 150 MB. The reports give the commands that record them.
+traces/
+*.nsys-rep
+*.sqlite
+# Built from the probes' sources.
+*.so
+probes/transport_native

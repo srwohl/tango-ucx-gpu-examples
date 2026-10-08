@@ -1,0 +1,34 @@
+[
+  {
+    "method": "production",
+    "repeat": 0,
+    "elapsed_seconds": 3.109536111000125,
+    "volumes_per_second": 3.2159137707468797,
+    "reconstruct_seconds": 1.672151581,
+    "volumes_verified": false
+  },
+  {
+    "method": "persistent",
+    "repeat": 0,
+    "elapsed_seconds": 2.6786569699997926,
+    "volumes_per_second": 3.733214111398808,
+    "reconstruct_seconds": 0.933256578,
+    "volumes_verified": false
+  },
+  {
+    "method": "persistent",
+    "repeat": 1,
+    "elapsed_seconds": 2.7158039450005163,
+    "volumes_per_second": 3.6821509219797894,
+    "reconstruct_seconds": 0.902487983,
+    "volumes_verified": false
+  },
+  {
+    "method": "production",
+    "repeat": 1,
+    "elapsed_seconds": 3.2288302029992337,
+    "volumes_per_second": 3.097096896179639,
+    "reconstruct_seconds": 1.649491127,
+    "volumes_verified": false
+  }
+]

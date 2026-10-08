@@ -1,0 +1,11 @@
+{"fbp_native_shim": true, "completed_calls": 1, "filter_rows": 45}
+{"fbp_native_shim": true, "completed_calls": 2, "filter_rows": 45}
+{"fbp_native_shim": true, "completed_calls": 3, "filter_rows": 45}
+{"fbp_native_shim": true, "completed_calls": 4, "filter_rows": 45}
+{"fbp_native_shim": true, "completed_calls": 5, "filter_rows": 45}
+{"fbp_native_shim": true, "completed_calls": 6, "filter_rows": 45}
+{"fbp_native_shim": true, "completed_calls": 7, "filter_rows": 45}
+{"fbp_native_shim": true, "completed_calls": 8, "filter_rows": 45}
+{"fbp_native_shim": true, "completed_calls": 9, "filter_rows": 45}
+{"fbp_native_shim": true, "completed_calls": 10, "filter_rows": 45}
+{"assembled_scans":10,"assembly_host_ns":215028895,"buffer_wait_ns":3699048774,"buffers":2,"completed_scans":10,"groups":230,"groups_during_reconstruction":112,"owned_sinogram_bytes":188743680,"partial_groups":10,"peak_busy_buffers":2,"peak_ready_scans":1,"ring_wrap_splits":0,"scan_overlap_summary":true}

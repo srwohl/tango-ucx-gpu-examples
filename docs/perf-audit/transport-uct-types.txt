@@ -1,0 +1,19 @@
+type = struct uct_mm_fifo_element {
+    uint8_t flags;
+    uint8_t am_id;
+    uint16_t length;
+    uct_mm_desc_info_t desc;
+    void *desc_data;
+}
+type = struct uct_mm_iface_config {
+    uct_sm_iface_config_t super;
+    size_t seg_size;
+    unsigned int fifo_size;
+    size_t fifo_max_poll;
+    double release_fifo_factor;
+    ucs_ternary_auto_value_t hugetlb_mode;
+    unsigned int fifo_elem_size;
+    int error_handling;
+    uct_iface_mpool_config_t mp;
+    uct_mm_iface_overhead_t overhead;
+}

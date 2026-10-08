@@ -1,0 +1,59 @@
+{
+  "cupy": "14.2.0",
+  "astra": "2.5.0",
+  "shape": {
+    "columns": 512,
+    "angles": 360
+  },
+  "filter_rows": 32,
+  "pattern": "uniform",
+  "irregular_angles": false,
+  "filter_cutoff": null,
+  "results": [
+    {
+      "method": "production",
+      "rows": 128,
+      "filter": "parzen",
+      "seconds": [
+        0.13425367600029858
+      ],
+      "median_seconds": 0.13425367600029858,
+      "reference_max_abs_error": 3.818422555923462e-08,
+      "validated": true
+    },
+    {
+      "method": "native_2d",
+      "rows": 128,
+      "filter": "parzen",
+      "seconds": [
+        0.07537877199865761
+      ],
+      "median_seconds": 0.07537877199865761,
+      "reference_max_abs_error": 3.818422555923462e-08,
+      "validated": true
+    },
+    {
+      "method": "persistent_2d",
+      "rows": 128,
+      "filter": "parzen",
+      "seconds": [
+        0.07030926999868825
+      ],
+      "median_seconds": 0.07030926999868825,
+      "reference_max_abs_error": 3.818422555923462e-08,
+      "validated": true
+    },
+    {
+      "method": "batched_2d",
+      "rows": 128,
+      "filter": "parzen",
+      "seconds": [
+        0.0798650569995516
+      ],
+      "median_seconds": 0.0798650569995516,
+      "reference_max_abs_error": 3.818422555923462e-08,
+      "validated": true
+    }
+  ],
+  "scope": "GPU-resident filtering plus BP; persistent geometry creation, compilation, upload, and independent host ASTRA FBP_CUDA reference excluded. Native method keeps ASTRA BP kernels and per-slice stream/texture/constants. Batched method uses custom CUDA kernel with ASTRA 2D geometry and hardware texture interpolation."
+}

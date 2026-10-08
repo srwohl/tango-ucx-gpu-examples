@@ -1,0 +1,26 @@
+{"workload": {"detector_shape": [128, 512], "volume_shape": [128, 512, 512], "projections_per_volume": 360, "input_frames_per_volume": 362, "detector_element": "u16", "detector_frame_bytes": 131072, "corrected_frame_bytes": 262144, "detector_bytes_per_volume": 47448064, "compressed_bytes_per_volume": 23861564, "volume_bytes": 134217728, "reconstruction": {"algorithm": "fbp", "backend": "astra-cuda", "filter": "ram-lak", "iterations": null, "threads": null, "relaxation": null, "min_constraint": null, "max_constraint": null, "filter_cutoff": null, "center": null, "gaussian_fwhm": 0.0, "scale_factor": 1.0, "slices_per_block": 0}, "iterations": null, "buffering": {"sinogram_memory": "gpu", "host_budget_bytes": 1073741824, "pinned_budget_bytes": 134217728, "memory_plan": {"sinogram_memory": "gpu", "block_rows": 128, "transfer_slots": 2, "retained_host_bytes": 0, "pinned_staging_bytes": 0, "gpu_sinogram_bytes": 94371840, "gpu_block_input_bytes": 0, "output_mode": "volume", "output_block_rows": 128, "host_output_bytes": 0, "gpu_output_bytes": 134217728, "gpu_output_ring_budget_bytes": 1073938432}}, "scan_period_seconds": 0.0, "reconstructors": 1, "chains": 1, "receive_budget_bytes": 96641024, "source": {"type": "phantom"}, "stage_gpus": {"decompress": 0, "correct": 0, "reconstruct": 0}, "network": {"profile": "auto", "tls": "all", "net_devices": "all", "allow_gpu_over_tcp": true}, "processing": {"transport_batch": 16, "processing_batch": 16, "processing_mode": "batched"}, "display_max": 0.01}}
+source log:
+
+decompress log:
+
+correct log:
+
+reconstruct log:
+
+archive log:
+{"archived_frames": 724, "completed_scans": 2, "archived_bytes": 47723128, "outcome": "end", "transport": "sysv/memory,cuda_ipc/cuda"}
+
+Traceback (most recent call last):
+  File "/home/swohl/repo/tango-hpc/tango-ucx-gpu-examples/tomography/demo.py", line 917, in <module>
+    main()
+    ~~~~^^
+  File "/home/swohl/repo/tango-hpc/tango-ucx-gpu-examples/tomography/demo.py", line 910, in main
+    supervise(output)
+    ~~~~~~~~~^^^^^^^^
+  File "/home/swohl/repo/tango-hpc/tango-ucx-gpu-examples/tomography/demo.py", line 862, in supervise
+    result = run(current, output, stop_requested, env)
+  File "/home/swohl/repo/tango-hpc/tango-ucx-gpu-examples/tomography/demo.py", line 457, in run
+    reports = read_reports()
+  File "/home/swohl/repo/tango-hpc/tango-ucx-gpu-examples/tomography/demo.py", line 385, in read_reports
+    raise RuntimeError(f"{role} failed: {report}")
+RuntimeError: reconstruct failed: {'completed_scans': 0, 'failure': 'ImportError: dynamic module does not define module export function (PyInit_fbp_native)\n\nAt:\n  /home/swohl/repo/tango-hpc/perf-audit/probes/fbp_shim/sitecustomize.py(22): native_fbp\n  /home/swohl/repo/tango-hpc/tango-ucx-gpu-examples/tomography/processors.py(135): _gpu_reconstruct_block\n  /home/swohl/repo/tango-hpc/tango-ucx-gpu-examples/tomography/processors.py(179): reconstruct\n  /home/swohl/repo/tango-hpc/tango-ucx-gpu-examples/tomography/processors.py(301): consume\n', 'input_failure': '', 'input_transport': 'sysv/memory,cuda_ipc/cuda', 'payload_bytes': 134217728, 'pressure': False, 'processed': 359, 'processing_batch': 16, 'processing_mode': 'batched', 'published': 0, 'publisher_budget_bytes': 1073938432, 'publisher_payload_storage_upper_bytes': 1073741824, 'publisher_slots_free': 4, 'publisher_slots_held': 4, 'quarantined_bytes': 0, 'reconstruct_ns': 0, 'role': 'reconstruct', 'slot_wait_ns': 1382, 'transport_batch': 16}

@@ -1,0 +1,151 @@
+{
+  "cupy": "14.2.0",
+  "astra": "2.5.0",
+  "shape": {
+    "columns": 512,
+    "angles": 360
+  },
+  "filter_rows": 32,
+  "pattern": "uniform",
+  "irregular_angles": false,
+  "filter_cutoff": null,
+  "results": [
+    {
+      "method": "production",
+      "rows": 32,
+      "filter": "parzen",
+      "seconds": [
+        0.03475404800155957,
+        0.03485912799988,
+        0.03458893400056695,
+        0.034510795998357935,
+        0.034846343000026536,
+        0.03444712500095193,
+        0.03373581300002115
+      ],
+      "median_seconds": 0.03458893400056695,
+      "reference_max_abs_error": 3.818422555923462e-08,
+      "validated": true
+    },
+    {
+      "method": "native_2d",
+      "rows": 32,
+      "filter": "parzen",
+      "seconds": [
+        0.017966534000152024,
+        0.01796530200044799,
+        0.01789797399942472,
+        0.01794713700110151,
+        0.01793260900012683,
+        0.017903673999171588,
+        0.01789377500062983
+      ],
+      "median_seconds": 0.01793260900012683,
+      "reference_max_abs_error": 3.818422555923462e-08,
+      "validated": true
+    },
+    {
+      "method": "persistent_2d",
+      "rows": 32,
+      "filter": "parzen",
+      "seconds": [
+        0.017360722000375972,
+        0.017625746000703657,
+        0.017352516999380896,
+        0.01721329300016805,
+        0.017268188001253293,
+        0.01738876600029471,
+        0.01719152100122301
+      ],
+      "median_seconds": 0.017352516999380896,
+      "reference_max_abs_error": 3.818422555923462e-08,
+      "validated": true
+    },
+    {
+      "method": "batched_2d",
+      "rows": 32,
+      "filter": "parzen",
+      "seconds": [
+        0.01953885100010666,
+        0.019988185000329395,
+        0.020063236999703804,
+        0.01998112099863647,
+        0.0199767129997781,
+        0.01997008099897357,
+        0.01997109199874103
+      ],
+      "median_seconds": 0.0199767129997781,
+      "reference_max_abs_error": 3.818422555923462e-08,
+      "validated": true
+    },
+    {
+      "method": "production",
+      "rows": 128,
+      "filter": "parzen",
+      "seconds": [
+        0.11686369599919999,
+        0.11819575700064888,
+        0.12050052499944286,
+        0.15849170399997092,
+        0.1176510719997168,
+        0.1214531759997044,
+        0.11792228800004523
+      ],
+      "median_seconds": 0.11819575700064888,
+      "reference_max_abs_error": 3.818422555923462e-08,
+      "validated": true
+    },
+    {
+      "method": "native_2d",
+      "rows": 128,
+      "filter": "parzen",
+      "seconds": [
+        0.07176809100019454,
+        0.07168282900056511,
+        0.07178557499901217,
+        0.07206540599872824,
+        0.07171309700061101,
+        0.07169607499963604,
+        0.07175319199996011
+      ],
+      "median_seconds": 0.07175319199996011,
+      "reference_max_abs_error": 3.818422555923462e-08,
+      "validated": true
+    },
+    {
+      "method": "persistent_2d",
+      "rows": 128,
+      "filter": "parzen",
+      "seconds": [
+        0.06865528800153697,
+        0.0685628920000454,
+        0.06857736900019518,
+        0.06857080700137885,
+        0.06918429300094431,
+        0.06937380300041696,
+        0.07140147500103922
+      ],
+      "median_seconds": 0.06865528800153697,
+      "reference_max_abs_error": 3.818422555923462e-08,
+      "validated": true
+    },
+    {
+      "method": "batched_2d",
+      "rows": 128,
+      "filter": "parzen",
+      "seconds": [
+        0.07954794400029641,
+        0.07981694500085723,
+        0.07986913400054618,
+        0.07949831999940216,
+        0.079682119001518,
+        0.07990042399978847,
+        0.07976786099970923
+      ],
+      "median_seconds": 0.07976786099970923,
+      "reference_max_abs_error": 3.818422555923462e-08,
+      "validated": true
+    }
+  ],
+  "scope": "GPU-resident filtering plus BP; persistent geometry creation, compilation, upload, and independent host ASTRA FBP_CUDA reference excluded. Native method keeps ASTRA BP kernels and per-slice stream/texture/constants. Batched method uses custom CUDA kernel with ASTRA 2D geometry and hardware texture interpolation."
+}

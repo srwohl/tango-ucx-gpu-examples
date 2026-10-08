@@ -1,0 +1,246 @@
+{
+  "results": [
+    {
+      "frames": 1,
+      "connect_seconds": 1.2329233220007154,
+      "transport": "sysv/memory,cuda_ipc/cuda",
+      "zero_copy_records": true,
+      "measurements": [
+        {
+          "name": "records_property_only",
+          "ns_per_operation": [
+            31867.048,
+            31229.828,
+            31648.403
+          ],
+          "median_ns_per_frame": 31648.403
+        },
+        {
+          "name": "native_records_property_only",
+          "ns_per_operation": [
+            32008.959,
+            31840.298,
+            35041.954
+          ],
+          "median_ns_per_frame": 32008.959
+        },
+        {
+          "name": "records_property_per_frame",
+          "ns_per_operation": [
+            39851.297,
+            38622.009,
+            34996.328
+          ],
+          "median_ns_per_frame": 38622.009
+        },
+        {
+          "name": "records_once_per_batch",
+          "ns_per_operation": [
+            37629.823,
+            36217.719,
+            38780.631
+          ],
+          "median_ns_per_frame": 37629.823
+        },
+        {
+          "name": "cached_records",
+          "ns_per_operation": [
+            1706.515,
+            1710.972,
+            1719.379
+          ],
+          "median_ns_per_frame": 1710.972
+        },
+        {
+          "name": "fresh_batch_records_once",
+          "ns_per_operation": [
+            41417.574,
+            41573.46,
+            41794.952
+          ],
+          "median_ns_per_frame": 41573.46
+        },
+        {
+          "name": "fresh_batch_records_per_frame",
+          "ns_per_operation": [
+            40242.841,
+            38750.163,
+            40153.541
+          ],
+          "median_ns_per_frame": 40153.541
+        },
+        {
+          "name": "native_index",
+          "ns_per_operation": [
+            629.346,
+            630.909,
+            649.625
+          ],
+          "median_ns_per_frame": 630.909
+        }
+      ]
+    },
+    {
+      "frames": 16,
+      "connect_seconds": 0.02878903800046828,
+      "transport": "sysv/memory,cuda_ipc/cuda",
+      "zero_copy_records": true,
+      "measurements": [
+        {
+          "name": "records_property_only",
+          "ns_per_operation": [
+            40810.029,
+            34528.849,
+            38839.003
+          ],
+          "median_ns_per_frame": 38839.003
+        },
+        {
+          "name": "native_records_property_only",
+          "ns_per_operation": [
+            32653.284,
+            33853.125,
+            52431.412
+          ],
+          "median_ns_per_frame": 33853.125
+        },
+        {
+          "name": "records_property_per_frame",
+          "ns_per_operation": [
+            572688.739,
+            549377.857,
+            555997.081
+          ],
+          "median_ns_per_frame": 34749.8175625
+        },
+        {
+          "name": "records_once_per_batch",
+          "ns_per_operation": [
+            56704.967,
+            49848.853,
+            48505.799
+          ],
+          "median_ns_per_frame": 3115.5533125
+        },
+        {
+          "name": "cached_records",
+          "ns_per_operation": [
+            10925.95,
+            9145.206,
+            9439.625
+          ],
+          "median_ns_per_frame": 589.9765625
+        },
+        {
+          "name": "fresh_batch_records_once",
+          "ns_per_operation": [
+            47850.113,
+            47795.64,
+            47720.657
+          ],
+          "median_ns_per_frame": 2987.2275
+        },
+        {
+          "name": "fresh_batch_records_per_frame",
+          "ns_per_operation": [
+            593639.241,
+            555034.395,
+            572738.402
+          ],
+          "median_ns_per_frame": 35796.150125
+        },
+        {
+          "name": "native_index",
+          "ns_per_operation": [
+            3495.385,
+            3380.987,
+            3415.794
+          ],
+          "median_ns_per_frame": 213.487125
+        }
+      ]
+    },
+    {
+      "frames": 128,
+      "connect_seconds": 0.027950784999120515,
+      "transport": "sysv/memory,cuda_ipc/cuda",
+      "zero_copy_records": true,
+      "measurements": [
+        {
+          "name": "records_property_only",
+          "ns_per_operation": [
+            37175.251,
+            39946.639,
+            34628.69
+          ],
+          "median_ns_per_frame": 37175.251
+        },
+        {
+          "name": "native_records_property_only",
+          "ns_per_operation": [
+            34322.387,
+            36710.448,
+            36120.716
+          ],
+          "median_ns_per_frame": 36120.716
+        },
+        {
+          "name": "records_property_per_frame",
+          "ns_per_operation": [
+            4807379.615,
+            4534298.148,
+            4513190.368
+          ],
+          "median_ns_per_frame": 35424.20428125
+        },
+        {
+          "name": "records_once_per_batch",
+          "ns_per_operation": [
+            105712.097,
+            107493.694,
+            106515.936
+          ],
+          "median_ns_per_frame": 832.15575
+        },
+        {
+          "name": "cached_records",
+          "ns_per_operation": [
+            71374.439,
+            70647.767,
+            68272.732
+          ],
+          "median_ns_per_frame": 551.9356796875
+        },
+        {
+          "name": "fresh_batch_records_once",
+          "ns_per_operation": [
+            111136.119,
+            107970.762,
+            106761.182
+          ],
+          "median_ns_per_frame": 843.521578125
+        },
+        {
+          "name": "fresh_batch_records_per_frame",
+          "ns_per_operation": [
+            4573031.533,
+            4573009.156,
+            4728833.416
+          ],
+          "median_ns_per_frame": 35726.8088515625
+        },
+        {
+          "name": "native_index",
+          "ns_per_operation": [
+            29136.442,
+            29041.902,
+            29115.734
+          ],
+          "median_ns_per_frame": 227.466671875
+        }
+      ]
+    }
+  ],
+  "native_module": "/tmp/tango-ucx-metadata-baseline.gCk9q8/tango_ucx/_core.cpython-314-x86_64-linux-gnu.so",
+  "scope": "Retained host UCX batch; metadata-only Python access. Fresh-batch variants create a new public wrapper for the same native batch each operation, including lazy records-view construction. No steady-state transport throughput or C++ pipeline cost attribution. Connect includes discovery and negotiation; first connection includes lazy imports."
+}

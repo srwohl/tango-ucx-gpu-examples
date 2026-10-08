@@ -1,0 +1,315 @@
+{
+  "shape": [
+    360,
+    128,
+    512
+  ],
+  "dtype": "float32",
+  "cupy": "14.2.0",
+  "results": [
+    {
+      "name": "layout.batch1",
+      "samples": [
+        {
+          "wall_ms": 12.589803998707794,
+          "stream_ms": 12.578816413879395
+        },
+        {
+          "wall_ms": 12.595543999850634,
+          "stream_ms": 12.587264060974121
+        },
+        {
+          "wall_ms": 13.192909998906543,
+          "stream_ms": 13.185407638549805
+        },
+        {
+          "wall_ms": 13.127805999829434,
+          "stream_ms": 13.120063781738281
+        },
+        {
+          "wall_ms": 12.488020000091637,
+          "stream_ms": 12.481663703918457
+        }
+      ],
+      "median_wall_ms": 12.595543999850634,
+      "median_stream_ms": 12.587264060974121,
+      "copy_calls": 360,
+      "extra_retained_bytes": 0,
+      "validated": true
+    },
+    {
+      "name": "layout.batch16",
+      "samples": [
+        {
+          "wall_ms": 0.8903520010790089,
+          "stream_ms": 0.881663978099823
+        },
+        {
+          "wall_ms": 0.8314700007758802,
+          "stream_ms": 0.8247039914131165
+        },
+        {
+          "wall_ms": 0.8488229996146401,
+          "stream_ms": 0.8417279720306396
+        },
+        {
+          "wall_ms": 0.835577000543708,
+          "stream_ms": 0.8288639783859253
+        },
+        {
+          "wall_ms": 0.835978999020881,
+          "stream_ms": 0.8293439745903015
+        }
+      ],
+      "median_wall_ms": 0.835978999020881,
+      "median_stream_ms": 0.8293439745903015,
+      "copy_calls": 23,
+      "extra_retained_bytes": 0,
+      "validated": true
+    },
+    {
+      "name": "layout.batch128",
+      "samples": [
+        {
+          "wall_ms": 0.6132159996923292,
+          "stream_ms": 0.602400004863739
+        },
+        {
+          "wall_ms": 0.605881999945268,
+          "stream_ms": 0.5994880199432373
+        },
+        {
+          "wall_ms": 0.6092869989515748,
+          "stream_ms": 0.5986239910125732
+        },
+        {
+          "wall_ms": 0.6051700001989957,
+          "stream_ms": 0.5982080101966858
+        },
+        {
+          "wall_ms": 0.6049090006854385,
+          "stream_ms": 0.5983679890632629
+        }
+      ],
+      "median_wall_ms": 0.605881999945268,
+      "median_stream_ms": 0.5986239910125732,
+      "copy_calls": 3,
+      "extra_retained_bytes": 0,
+      "validated": true
+    },
+    {
+      "name": "layout.batch360",
+      "samples": [
+        {
+          "wall_ms": 0.6758050003554672,
+          "stream_ms": 0.6652479767799377
+        },
+        {
+          "wall_ms": 0.6550649995915592,
+          "stream_ms": 0.6473600268363953
+        },
+        {
+          "wall_ms": 0.6561069985764334,
+          "stream_ms": 0.6489920020103455
+        },
+        {
+          "wall_ms": 0.6587709995073965,
+          "stream_ms": 0.6512640118598938
+        },
+        {
+          "wall_ms": 0.6518180016428232,
+          "stream_ms": 0.6451200246810913
+        }
+      ],
+      "median_wall_ms": 0.6561069985764334,
+      "median_stream_ms": 0.6489920020103455,
+      "copy_calls": 1,
+      "extra_retained_bytes": 0,
+      "validated": true
+    },
+    {
+      "name": "layout.contiguous_then_transpose",
+      "samples": [
+        {
+          "wall_ms": 7.651780000742292,
+          "stream_ms": 7.641088008880615
+        },
+        {
+          "wall_ms": 10.310042000128306,
+          "stream_ms": 10.303135871887207
+        },
+        {
+          "wall_ms": 7.570805999421282,
+          "stream_ms": 7.563263893127441
+        },
+        {
+          "wall_ms": 7.557741000709939,
+          "stream_ms": 7.5504961013793945
+        },
+        {
+          "wall_ms": 7.511593999879551,
+          "stream_ms": 7.50380802154541
+        }
+      ],
+      "median_wall_ms": 7.570805999421282,
+      "median_stream_ms": 7.563263893127441,
+      "copy_calls": 361,
+      "extra_retained_bytes": 94371840,
+      "validated": true
+    },
+    {
+      "name": "production.consume_without_final_projection",
+      "samples": [
+        {
+          "wall_ms": 36.986072998843156,
+          "stream_ms": 36.97516632080078
+        },
+        {
+          "wall_ms": 37.24441300073522,
+          "stream_ms": 37.23513412475586
+        },
+        {
+          "wall_ms": 37.40069999912521,
+          "stream_ms": 37.39228820800781
+        },
+        {
+          "wall_ms": 38.66371999902185,
+          "stream_ms": 38.65190505981445
+        },
+        {
+          "wall_ms": 38.05074499905459,
+          "stream_ms": 38.037376403808594
+        }
+      ],
+      "median_wall_ms": 37.40069999912521,
+      "median_stream_ms": 37.39228820800781,
+      "copy_calls": 360,
+      "extra_retained_bytes": 0,
+      "validated": true,
+      "declared_angles": 361,
+      "ingested_angles": 360
+    },
+    {
+      "name": "experimental.grouped_ingest1",
+      "samples": [
+        {
+          "wall_ms": 43.351749000066775,
+          "stream_ms": 43.34230422973633
+        },
+        {
+          "wall_ms": 43.15547599981073,
+          "stream_ms": 43.14716720581055
+        },
+        {
+          "wall_ms": 43.05504499825474,
+          "stream_ms": 43.04774475097656
+        },
+        {
+          "wall_ms": 43.04216099990299,
+          "stream_ms": 43.035518646240234
+        },
+        {
+          "wall_ms": 42.93490599957295,
+          "stream_ms": 42.92812728881836
+        }
+      ],
+      "median_wall_ms": 43.05504499825474,
+      "median_stream_ms": 43.04774475097656,
+      "copy_calls": 360,
+      "extra_retained_bytes": 0,
+      "validated": true
+    },
+    {
+      "name": "experimental.grouped_ingest16",
+      "samples": [
+        {
+          "wall_ms": 2.8119439994043205,
+          "stream_ms": 2.802175998687744
+        },
+        {
+          "wall_ms": 2.7672180003719404,
+          "stream_ms": 2.7603840827941895
+        },
+        {
+          "wall_ms": 2.7710960002877982,
+          "stream_ms": 2.7642879486083984
+        },
+        {
+          "wall_ms": 2.773730999251711,
+          "stream_ms": 2.765727996826172
+        },
+        {
+          "wall_ms": 2.7667480007949052,
+          "stream_ms": 2.759903907775879
+        }
+      ],
+      "median_wall_ms": 2.7710960002877982,
+      "median_stream_ms": 2.7642879486083984,
+      "copy_calls": 23,
+      "extra_retained_bytes": 0,
+      "validated": true
+    },
+    {
+      "name": "experimental.grouped_ingest128",
+      "samples": [
+        {
+          "wall_ms": 0.723474000551505,
+          "stream_ms": 0.7138879895210266
+        },
+        {
+          "wall_ms": 0.7284639996214537,
+          "stream_ms": 0.7208960056304932
+        },
+        {
+          "wall_ms": 0.7288150009117089,
+          "stream_ms": 0.7212160229682922
+        },
+        {
+          "wall_ms": 0.7202389988378854,
+          "stream_ms": 0.713375985622406
+        },
+        {
+          "wall_ms": 0.719837998985895,
+          "stream_ms": 0.7127040028572083
+        }
+      ],
+      "median_wall_ms": 0.723474000551505,
+      "median_stream_ms": 0.7138879895210266,
+      "copy_calls": 3,
+      "extra_retained_bytes": 0,
+      "validated": true
+    },
+    {
+      "name": "experimental.grouped_ingest360",
+      "samples": [
+        {
+          "wall_ms": 0.8271520000562305,
+          "stream_ms": 0.8154879808425903
+        },
+        {
+          "wall_ms": 0.8370409996132366,
+          "stream_ms": 0.8295999765396118
+        },
+        {
+          "wall_ms": 0.8192059995053569,
+          "stream_ms": 0.8114879727363586
+        },
+        {
+          "wall_ms": 0.8306189993163571,
+          "stream_ms": 0.8158079981803894
+        },
+        {
+          "wall_ms": 0.8193369994842215,
+          "stream_ms": 0.8121280074119568
+        }
+      ],
+      "median_wall_ms": 0.8271520000562305,
+      "median_stream_ms": 0.8154879808425903,
+      "copy_calls": 1,
+      "extra_retained_bytes": 0,
+      "validated": true
+    }
+  ],
+  "zero_copy_borrowed_pointer": true,
+  "scope": "All input/output allocations preallocated on one GPU. Layout-only variants omit production validation and pointer-view construction. Production receives one fewer projection than its declared scan, avoiding FBP. Pointer and metadata tuples are prepared outside timing for both ingestion paths. Experimental grouped ingestion validates kinds, lengths, projection continuity, angles and contiguous pointers before a single borrowed-view layout copy. CUDA event intervals include host submission gaps, not just kernel execution. Batch variants assume contiguous retained receive frames and require caller integration."
+}

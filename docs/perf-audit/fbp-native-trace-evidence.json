@@ -1,0 +1,1577 @@
+{
+  "doctor": {
+    "command": "report-doctor",
+    "data": {
+      "cache": {
+        "backend": "parquet_duckdb",
+        "cache_artifact_label": "report-cf7a0fe0e79a6f89.duckdb",
+        "cache_artifact_ready": true,
+        "diagnostics": [
+          {
+            "duration_ms": 836.7,
+            "hit": false,
+            "lock_wait_ms": 0.1,
+            "scoped": false,
+            "stage": "duckdb_cache"
+          }
+        ],
+        "input_kind": "native_report",
+        "parquet_export_label": "report-cf7a0fe0e79a6f89-parquet",
+        "paths_hidden": true,
+        "report_count": 1,
+        "source_kind": "nsys_export_parquet_duckdb",
+        "state": "ready"
+      },
+      "checks": [
+        {
+          "details": {
+            "important_tables": {
+              "CUPTI_ACTIVITY_KIND_KERNEL": 21752,
+              "CUPTI_ACTIVITY_KIND_RUNTIME": 43772,
+              "DIAGNOSTIC_EVENT": 37,
+              "NVTX_EVENTS": 8,
+              "TARGET_INFO_GPU": 1
+            }
+          },
+          "name": "table_inventory",
+          "status": "pass",
+          "summary": "Found 51 tables."
+        },
+        {
+          "details": {
+            "active_physical_gpu_ids": [
+              0
+            ],
+            "kernel_device_activity": [
+              {
+                "busLocation": "0000:0a:00.0",
+                "chipName": "TU106",
+                "computeMajor": 7,
+                "computeMinor": 5,
+                "gpu_id_mapping_source": "TARGET_INFO_CUDA_DEVICE(pid,cudaId)",
+                "kernel_launch_count": 21752,
+                "key": "gpu-active:633370683813",
+                "logical_gpu_id": 0,
+                "name": "NVIDIA GeForce RTX 2060 SUPER",
+                "physical_gpu_id": 0,
+                "report_index": 0,
+                "report_label": "fbp-native.nsys-rep",
+                "smCount": 34,
+                "totalMemory": 8161329152,
+                "uuid": "5dc3dcfa-d00d-b037-0825-de21d49c5edf"
+              }
+            ],
+            "logical_to_physical_gpu_mapping": [
+              {
+                "busLocation": "0000:0a:00.0",
+                "chipName": "TU106",
+                "computeMajor": 7,
+                "computeMinor": 5,
+                "id": 0,
+                "name": "NVIDIA GeForce RTX 2060 SUPER",
+                "report_label": "fbp-native.nsys-rep",
+                "uuid": "5dc3dcfa-d00d-b037-0825-de21d49c5edf"
+              }
+            ],
+            "registered_without_kernel_activity": []
+          },
+          "name": "gpu_device_consistency",
+          "status": "pass",
+          "summary": "GPU metadata and kernel device ids are consistent. CUDA logical device ids were mapped to physical GPU ids before comparison."
+        },
+        {
+          "details": {
+            "correlatable_kernel_count": 21752,
+            "match_rate": 1.0,
+            "matched_kernel_count": 21752,
+            "pass_threshold": 0.99,
+            "warn_threshold": 0.9
+          },
+          "name": "runtime_kernel_correlation",
+          "status": "pass",
+          "summary": "21752/21752 correlatable non-graph kernels matched a CUDA runtime call (100.0%)."
+        },
+        {
+          "details": {
+            "nvtx_threads": 1,
+            "runtime_threads": 1
+          },
+          "name": "nvtx_coverage",
+          "status": "pass",
+          "summary": "NVTX has 8 event(s)."
+        },
+        {
+          "details": {
+            "missing_required_tables": [
+              "GPU_METRICS",
+              "TARGET_INFO_GPU_METRICS"
+            ]
+          },
+          "name": "metrics_completeness",
+          "status": "info",
+          "summary": "GPU metrics tables are not present."
+        },
+        {
+          "details": {
+            "missing_required_tables": [
+              "GPU_METRICS"
+            ]
+          },
+          "name": "flat_metrics",
+          "status": "info",
+          "summary": "GPU_METRICS is not present."
+        },
+        {
+          "details": {
+            "duration_ns": 4172481022,
+            "end_ns": 6545349101,
+            "kernel_count": 21752,
+            "large_gap_threshold_ns": 1000000000,
+            "large_gaps": [],
+            "short_timeline_threshold_ns": 100000000,
+            "start_ns": 2372868079
+          },
+          "name": "timeline_health",
+          "status": "pass",
+          "summary": "Kernel timeline duration is 4.17248s across 21752 kernel launch(es)."
+        },
+        {
+          "details": {
+            "cuda_runtime_thread_count": 1
+          },
+          "name": "process_thread_summary",
+          "status": "pass",
+          "summary": "Process/thread summary was collected."
+        }
+      ],
+      "evidence": {
+        "cache": {
+          "backend": "parquet_duckdb",
+          "cache_artifact_label": "report-cf7a0fe0e79a6f89.duckdb",
+          "cache_artifact_ready": true,
+          "diagnostics": [
+            {
+              "duration_ms": 836.7,
+              "hit": false,
+              "lock_wait_ms": 0.1,
+              "scoped": false,
+              "stage": "duckdb_cache"
+            }
+          ],
+          "input_kind": "native_report",
+          "parquet_export_label": "report-cf7a0fe0e79a6f89-parquet",
+          "paths_hidden": true,
+          "report_count": 1,
+          "source_kind": "nsys_export_parquet_duckdb",
+          "state": "ready"
+        },
+        "command": "nsys_report_doctor",
+        "multi_report": false,
+        "paths_hidden": true,
+        "report_count": 1,
+        "report_label": "fbp-native.nsys-rep (1 reports)",
+        "schema": "nsys-report-evidence-v1",
+        "source": "nsight-systems-report",
+        "source_kind": "nsys_export_parquet_duckdb"
+      },
+      "ok": true,
+      "paths_hidden": true,
+      "report_label": "fbp-native.nsys-rep (1 reports)",
+      "source": "nsys_export_parquet_duckdb",
+      "status": "info"
+    },
+    "ok": true,
+    "paths_hidden": true,
+    "schema_version": "nsys-agent-json-v1",
+    "source": {
+      "interface": "json-cli",
+      "kind": "nsys-agent",
+      "project": "nsys-agent-tools"
+    }
+  },
+  "kernel_fact": {
+    "command": "report-fact",
+    "data": {
+      "answer_guidance": "For cross-report or cross-rank slower/faster questions, state the comparison metric explicitly. Max single duration, total duration, mean duration, and timeline span can lead to different conclusions.",
+      "evidence": {
+        "cache": {
+          "backend": "parquet_duckdb",
+          "cache_artifact_label": "report-cf7a0fe0e79a6f89.duckdb",
+          "cache_artifact_ready": true,
+          "diagnostics": [
+            {
+              "duration_ms": 0.2,
+              "hit": true,
+              "scoped": false,
+              "stage": "duckdb_cache"
+            }
+          ],
+          "input_kind": "native_report",
+          "parquet_export_label": "report-cf7a0fe0e79a6f89-parquet",
+          "paths_hidden": true,
+          "report_count": 1,
+          "source_kind": "nsys_export_parquet_duckdb",
+          "state": "ready"
+        },
+        "command": "nsys_report_fact",
+        "fact_type": "kernel_summary",
+        "multi_report": false,
+        "paths_hidden": true,
+        "report_count": 1,
+        "report_label": "fbp-native.nsys-rep (1 reports)",
+        "schema": "nsys-report-evidence-v1",
+        "source": "nsight-systems-report",
+        "source_kind": "nsys_export_parquet_duckdb"
+      },
+      "fact_type": "kernel_summary",
+      "metric": "max_single_duration",
+      "ok": true,
+      "rows": [
+        {
+          "kernel_name": "batch_backproject(float *, unsigned long long, unsigned int, unsigned int, unsigned int, float)",
+          "key": "kernel-summary:6835e02a223a",
+          "launch_count": 184,
+          "max_duration_ns": 817274,
+          "mean_duration_ns": 789427.3097826086,
+          "min_duration_ns": 540092,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 145254625
+        },
+        {
+          "kernel_name": "cupy_true_divide__float32_float_float32",
+          "key": "kernel-summary:87cba4ca48e3",
+          "launch_count": 32,
+          "max_duration_ns": 297278,
+          "mean_duration_ns": 260009.90625,
+          "min_duration_ns": 251550,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 8320317
+        },
+        {
+          "kernel_name": "void vector_fft_r2c<(unsigned int)1024, EPT<(unsigned int)16>, (unsigned int)1, (unsigned int)20, (padding_t)70, (twiddle_t)0, (loadstore_modifier_t)2, (layout_t)0, unsigned int, float>(kernel_arguments_t<T9>)",
+          "key": "kernel-summary:dfbce3099f2d",
+          "launch_count": 160,
+          "max_duration_ns": 252286,
+          "mean_duration_ns": 58234.95625,
+          "min_duration_ns": 10176,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 9317593
+        },
+        {
+          "kernel_name": "void vector_fft_c2r<(unsigned int)1024, EPT<(unsigned int)16>, (unsigned int)1, (unsigned int)20, (padding_t)70, (twiddle_t)0, (loadstore_modifier_t)2, (layout_t)0, unsigned int, float>(kernel_arguments_t<T9>)",
+          "key": "kernel-summary:242145759c00",
+          "launch_count": 160,
+          "max_duration_ns": 250590,
+          "mean_duration_ns": 58081.35,
+          "min_duration_ns": 10432,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 9293016
+        },
+        {
+          "kernel_name": "cupy_multiply__complex64_float32_complex64",
+          "key": "kernel-summary:4f9f0bede469",
+          "launch_count": 32,
+          "max_duration_ns": 244766,
+          "mean_duration_ns": 243633.125,
+          "min_duration_ns": 239934,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 7796260
+        }
+      ],
+      "table_view": {
+        "columns": [
+          {
+            "key": "report_label",
+            "label": "Report label",
+            "type": "string"
+          },
+          {
+            "key": "kernel_name",
+            "label": "Kernel name",
+            "type": "string"
+          },
+          {
+            "key": "launch_count",
+            "label": "Launch count",
+            "type": "integer"
+          },
+          {
+            "key": "total_duration_ns",
+            "label": "Total duration",
+            "type": "integer",
+            "unit": "ns"
+          },
+          {
+            "key": "mean_duration_ns",
+            "label": "Mean duration",
+            "type": "number",
+            "unit": "ns"
+          },
+          {
+            "key": "max_duration_ns",
+            "label": "Max duration",
+            "type": "integer",
+            "unit": "ns"
+          },
+          {
+            "key": "min_duration_ns",
+            "label": "Min duration",
+            "type": "integer",
+            "unit": "ns"
+          }
+        ],
+        "row_field": "rows",
+        "schema": "nsys-report-table-view-v1"
+      },
+      "table_views": {
+        "top_by_mean_duration": {
+          "columns": [
+            {
+              "key": "report_label",
+              "label": "Report label",
+              "type": "string"
+            },
+            {
+              "key": "kernel_name",
+              "label": "Kernel name",
+              "type": "string"
+            },
+            {
+              "key": "launch_count",
+              "label": "Launch count",
+              "type": "integer"
+            },
+            {
+              "key": "total_duration_ns",
+              "label": "Total duration",
+              "type": "integer",
+              "unit": "ns"
+            },
+            {
+              "key": "mean_duration_ns",
+              "label": "Mean duration",
+              "type": "number",
+              "unit": "ns"
+            },
+            {
+              "key": "max_duration_ns",
+              "label": "Max duration",
+              "type": "integer",
+              "unit": "ns"
+            },
+            {
+              "key": "min_duration_ns",
+              "label": "Min duration",
+              "type": "integer",
+              "unit": "ns"
+            }
+          ],
+          "row_field": "top_by_mean_duration",
+          "schema": "nsys-report-table-view-v1"
+        },
+        "top_by_total_duration": {
+          "columns": [
+            {
+              "key": "report_label",
+              "label": "Report label",
+              "type": "string"
+            },
+            {
+              "key": "kernel_name",
+              "label": "Kernel name",
+              "type": "string"
+            },
+            {
+              "key": "launch_count",
+              "label": "Launch count",
+              "type": "integer"
+            },
+            {
+              "key": "total_duration_ns",
+              "label": "Total duration",
+              "type": "integer",
+              "unit": "ns"
+            },
+            {
+              "key": "mean_duration_ns",
+              "label": "Mean duration",
+              "type": "number",
+              "unit": "ns"
+            },
+            {
+              "key": "max_duration_ns",
+              "label": "Max duration",
+              "type": "integer",
+              "unit": "ns"
+            },
+            {
+              "key": "min_duration_ns",
+              "label": "Min duration",
+              "type": "integer",
+              "unit": "ns"
+            }
+          ],
+          "row_field": "top_by_total_duration",
+          "schema": "nsys-report-table-view-v1"
+        }
+      },
+      "top_by_mean_duration": [
+        {
+          "kernel_name": "batch_backproject(float *, unsigned long long, unsigned int, unsigned int, unsigned int, float)",
+          "key": "kernel-summary:6835e02a223a",
+          "launch_count": 184,
+          "max_duration_ns": 817274,
+          "mean_duration_ns": 789427.3097826086,
+          "min_duration_ns": 540092,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 145254625
+        },
+        {
+          "kernel_name": "cupy_true_divide__float32_float_float32",
+          "key": "kernel-summary:87cba4ca48e3",
+          "launch_count": 32,
+          "max_duration_ns": 297278,
+          "mean_duration_ns": 260009.90625,
+          "min_duration_ns": 251550,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 8320317
+        },
+        {
+          "kernel_name": "cupy_multiply__complex64_float32_complex64",
+          "key": "kernel-summary:4f9f0bede469",
+          "launch_count": 32,
+          "max_duration_ns": 244766,
+          "mean_duration_ns": 243633.125,
+          "min_duration_ns": 239934,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 7796260
+        },
+        {
+          "kernel_name": "cupy_copy__complex64_complex64",
+          "key": "kernel-summary:3cdfed592b5b",
+          "launch_count": 32,
+          "max_duration_ns": 244350,
+          "mean_duration_ns": 243170.0625,
+          "min_duration_ns": 239646,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 7781442
+        },
+        {
+          "kernel_name": "void vector_fft_r2c<(unsigned int)1024, EPT<(unsigned int)16>, (unsigned int)1, (unsigned int)20, (padding_t)70, (twiddle_t)0, (loadstore_modifier_t)2, (layout_t)0, unsigned int, float>(kernel_arguments_t<T9>)",
+          "key": "kernel-summary:dfbce3099f2d",
+          "launch_count": 160,
+          "max_duration_ns": 252286,
+          "mean_duration_ns": 58234.95625,
+          "min_duration_ns": 10176,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 9317593
+        }
+      ],
+      "top_by_total_duration": [
+        {
+          "kernel_name": "astraCUDA::devBP(float *, unsigned int, unsigned long long, unsigned int, astra::SDimensions, float)",
+          "key": "kernel-summary:0e1e67b3fb35",
+          "launch_count": 20608,
+          "max_duration_ns": 36032,
+          "mean_duration_ns": 22333.192255434784,
+          "min_duration_ns": 12063,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 460242426
+        },
+        {
+          "kernel_name": "batch_backproject(float *, unsigned long long, unsigned int, unsigned int, unsigned int, float)",
+          "key": "kernel-summary:6835e02a223a",
+          "launch_count": 184,
+          "max_duration_ns": 817274,
+          "mean_duration_ns": 789427.3097826086,
+          "min_duration_ns": 540092,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 145254625
+        },
+        {
+          "kernel_name": "void vector_fft_r2c<(unsigned int)1024, EPT<(unsigned int)16>, (unsigned int)1, (unsigned int)20, (padding_t)70, (twiddle_t)0, (loadstore_modifier_t)2, (layout_t)0, unsigned int, float>(kernel_arguments_t<T9>)",
+          "key": "kernel-summary:dfbce3099f2d",
+          "launch_count": 160,
+          "max_duration_ns": 252286,
+          "mean_duration_ns": 58234.95625,
+          "min_duration_ns": 10176,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 9317593
+        },
+        {
+          "kernel_name": "void vector_fft_c2r<(unsigned int)1024, EPT<(unsigned int)16>, (unsigned int)1, (unsigned int)20, (padding_t)70, (twiddle_t)0, (loadstore_modifier_t)2, (layout_t)0, unsigned int, float>(kernel_arguments_t<T9>)",
+          "key": "kernel-summary:242145759c00",
+          "launch_count": 160,
+          "max_duration_ns": 250590,
+          "mean_duration_ns": 58081.35,
+          "min_duration_ns": 10432,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 9293016
+        },
+        {
+          "kernel_name": "cupy_true_divide__float32_float_float32",
+          "key": "kernel-summary:87cba4ca48e3",
+          "launch_count": 32,
+          "max_duration_ns": 297278,
+          "mean_duration_ns": 260009.90625,
+          "min_duration_ns": 251550,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 8320317
+        }
+      ]
+    },
+    "ok": true,
+    "paths_hidden": true,
+    "schema_version": "nsys-agent-json-v1",
+    "source": {
+      "interface": "json-cli",
+      "kind": "nsys-agent",
+      "project": "nsys-agent-tools"
+    }
+  },
+  "api_fact": {
+    "command": "report-fact",
+    "data": {
+      "answer_guidance": "When a report is loaded, do not answer only conceptually. Include the top API name and value for mean duration, total duration, and max single-call duration so the user can see why the wording is ambiguous.",
+      "evidence": {
+        "cache": {
+          "backend": "parquet_duckdb",
+          "cache_artifact_label": "report-cf7a0fe0e79a6f89.duckdb",
+          "cache_artifact_ready": true,
+          "diagnostics": [
+            {
+              "duration_ms": 0.2,
+              "hit": true,
+              "scoped": false,
+              "stage": "duckdb_cache"
+            }
+          ],
+          "input_kind": "native_report",
+          "parquet_export_label": "report-cf7a0fe0e79a6f89-parquet",
+          "paths_hidden": true,
+          "report_count": 1,
+          "source_kind": "nsys_export_parquet_duckdb",
+          "state": "ready"
+        },
+        "command": "nsys_report_fact",
+        "fact_type": "cuda_api_summary",
+        "multi_report": false,
+        "paths_hidden": true,
+        "report_count": 1,
+        "report_label": "fbp-native.nsys-rep (1 reports)",
+        "schema": "nsys-report-evidence-v1",
+        "source": "nsight-systems-report",
+        "source_kind": "nsys_export_parquet_duckdb"
+      },
+      "fact_type": "cuda_api_summary",
+      "metric": "api_time_interpretations",
+      "metric_note": "Unqualified API execution time is ambiguous. Use mean_duration as the concise primary answer; also mention total duration and longest single call when they identify different APIs.",
+      "ok": true,
+      "preferred_primary_metric": "mean_duration",
+      "table_views": {
+        "top_by_max_single_duration": {
+          "columns": [
+            {
+              "key": "report_label",
+              "label": "Report label",
+              "type": "string"
+            },
+            {
+              "key": "api_name",
+              "label": "API name",
+              "type": "string"
+            },
+            {
+              "key": "call_count",
+              "label": "Call count",
+              "type": "integer"
+            },
+            {
+              "key": "total_duration_ns",
+              "label": "Total duration",
+              "type": "integer",
+              "unit": "ns"
+            },
+            {
+              "key": "mean_duration_ns",
+              "label": "Mean duration",
+              "type": "number",
+              "unit": "ns"
+            },
+            {
+              "key": "max_duration_ns",
+              "label": "Max duration",
+              "type": "integer",
+              "unit": "ns"
+            },
+            {
+              "key": "min_duration_ns",
+              "label": "Min duration",
+              "type": "integer",
+              "unit": "ns"
+            }
+          ],
+          "row_field": "top_by_max_single_duration",
+          "schema": "nsys-report-table-view-v1"
+        },
+        "top_by_mean_duration": {
+          "columns": [
+            {
+              "key": "report_label",
+              "label": "Report label",
+              "type": "string"
+            },
+            {
+              "key": "api_name",
+              "label": "API name",
+              "type": "string"
+            },
+            {
+              "key": "call_count",
+              "label": "Call count",
+              "type": "integer"
+            },
+            {
+              "key": "total_duration_ns",
+              "label": "Total duration",
+              "type": "integer",
+              "unit": "ns"
+            },
+            {
+              "key": "mean_duration_ns",
+              "label": "Mean duration",
+              "type": "number",
+              "unit": "ns"
+            },
+            {
+              "key": "max_duration_ns",
+              "label": "Max duration",
+              "type": "integer",
+              "unit": "ns"
+            },
+            {
+              "key": "min_duration_ns",
+              "label": "Min duration",
+              "type": "integer",
+              "unit": "ns"
+            }
+          ],
+          "row_field": "top_by_mean_duration",
+          "schema": "nsys-report-table-view-v1"
+        },
+        "top_by_total_duration": {
+          "columns": [
+            {
+              "key": "report_label",
+              "label": "Report label",
+              "type": "string"
+            },
+            {
+              "key": "api_name",
+              "label": "API name",
+              "type": "string"
+            },
+            {
+              "key": "call_count",
+              "label": "Call count",
+              "type": "integer"
+            },
+            {
+              "key": "total_duration_ns",
+              "label": "Total duration",
+              "type": "integer",
+              "unit": "ns"
+            },
+            {
+              "key": "mean_duration_ns",
+              "label": "Mean duration",
+              "type": "number",
+              "unit": "ns"
+            },
+            {
+              "key": "max_duration_ns",
+              "label": "Max duration",
+              "type": "integer",
+              "unit": "ns"
+            },
+            {
+              "key": "min_duration_ns",
+              "label": "Min duration",
+              "type": "integer",
+              "unit": "ns"
+            }
+          ],
+          "row_field": "top_by_total_duration",
+          "schema": "nsys-report-table-view-v1"
+        }
+      },
+      "top_by_max_single_duration": [
+        {
+          "api_name": "cudaMalloc_v3020",
+          "call_count": 522,
+          "key": "cuda-api-summary:26d9e9b0ce80",
+          "max_duration_ns": 167088683,
+          "mean_duration_ns": 409400.2931034483,
+          "min_duration_ns": 2986,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 213706953
+        },
+        {
+          "api_name": "cudaHostAlloc_v3020",
+          "call_count": 2,
+          "key": "cuda-api-summary:c407e6662866",
+          "max_duration_ns": 99006635,
+          "mean_duration_ns": 50408667.5,
+          "min_duration_ns": 1810700,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 100817335
+        },
+        {
+          "api_name": "cudaMemcpyAsync_v3020",
+          "call_count": 401,
+          "key": "cuda-api-summary:67b8b85b716d",
+          "max_duration_ns": 36827112,
+          "mean_duration_ns": 638741.289276808,
+          "min_duration_ns": 9147,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 256135257
+        },
+        {
+          "api_name": "cudaStreamSynchronize_v3020",
+          "call_count": 2618,
+          "key": "cuda-api-summary:2c3a2511315a",
+          "max_duration_ns": 19599309,
+          "mean_duration_ns": 220525.28533231476,
+          "min_duration_ns": 1042,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 577335197
+        },
+        {
+          "api_name": "cuMemcpyHtoD_v2",
+          "call_count": 259,
+          "key": "cuda-api-summary:15145ff7357a",
+          "max_duration_ns": 1540226,
+          "mean_duration_ns": 13071.8416988417,
+          "min_duration_ns": 6502,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 3385607
+        }
+      ],
+      "top_by_mean_duration": [
+        {
+          "api_name": "cudaHostAlloc_v3020",
+          "call_count": 2,
+          "key": "cuda-api-summary:c407e6662866",
+          "max_duration_ns": 99006635,
+          "mean_duration_ns": 50408667.5,
+          "min_duration_ns": 1810700,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 100817335
+        },
+        {
+          "api_name": "cudaMemcpyAsync_v3020",
+          "call_count": 401,
+          "key": "cuda-api-summary:67b8b85b716d",
+          "max_duration_ns": 36827112,
+          "mean_duration_ns": 638741.289276808,
+          "min_duration_ns": 9147,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 256135257
+        },
+        {
+          "api_name": "cudaMalloc_v3020",
+          "call_count": 522,
+          "key": "cuda-api-summary:26d9e9b0ce80",
+          "max_duration_ns": 167088683,
+          "mean_duration_ns": 409400.2931034483,
+          "min_duration_ns": 2986,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 213706953
+        },
+        {
+          "api_name": "cuModuleLoadData",
+          "call_count": 263,
+          "key": "cuda-api-summary:f09da69690a6",
+          "max_duration_ns": 1148362,
+          "mean_duration_ns": 265775.56653992395,
+          "min_duration_ns": 64833,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 69898974
+        },
+        {
+          "api_name": "cudaStreamSynchronize_v3020",
+          "call_count": 2618,
+          "key": "cuda-api-summary:2c3a2511315a",
+          "max_duration_ns": 19599309,
+          "mean_duration_ns": 220525.28533231476,
+          "min_duration_ns": 1042,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 577335197
+        }
+      ],
+      "top_by_total_duration": [
+        {
+          "api_name": "cudaStreamSynchronize_v3020",
+          "call_count": 2618,
+          "key": "cuda-api-summary:2c3a2511315a",
+          "max_duration_ns": 19599309,
+          "mean_duration_ns": 220525.28533231476,
+          "min_duration_ns": 1042,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 577335197
+        },
+        {
+          "api_name": "cudaMemcpyAsync_v3020",
+          "call_count": 401,
+          "key": "cuda-api-summary:67b8b85b716d",
+          "max_duration_ns": 36827112,
+          "mean_duration_ns": 638741.289276808,
+          "min_duration_ns": 9147,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 256135257
+        },
+        {
+          "api_name": "cudaMalloc_v3020",
+          "call_count": 522,
+          "key": "cuda-api-summary:26d9e9b0ce80",
+          "max_duration_ns": 167088683,
+          "mean_duration_ns": 409400.2931034483,
+          "min_duration_ns": 2986,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 213706953
+        },
+        {
+          "api_name": "cudaHostAlloc_v3020",
+          "call_count": 2,
+          "key": "cuda-api-summary:c407e6662866",
+          "max_duration_ns": 99006635,
+          "mean_duration_ns": 50408667.5,
+          "min_duration_ns": 1810700,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 100817335
+        },
+        {
+          "api_name": "cudaLaunchKernel_v7000",
+          "call_count": 21048,
+          "key": "cuda-api-summary:7cbe8813b033",
+          "max_duration_ns": 160826,
+          "mean_duration_ns": 4315.617730900798,
+          "min_duration_ns": 3657,
+          "report_label": "fbp-native.nsys-rep",
+          "total_duration_ns": 90835122
+        }
+      ]
+    },
+    "ok": true,
+    "paths_hidden": true,
+    "schema_version": "nsys-agent-json-v1",
+    "source": {
+      "interface": "json-cli",
+      "kind": "nsys-agent",
+      "project": "nsys-agent-tools"
+    }
+  },
+  "scope_wall": {
+    "command": "report-query",
+    "data": {
+      "columns": [
+        "phase",
+        "wall_ms"
+      ],
+      "evidence": {
+        "cache": {
+          "backend": "parquet_duckdb",
+          "cache_artifact_label": "report-cf7a0fe0e79a6f89.duckdb",
+          "cache_artifact_ready": true,
+          "diagnostics": [
+            {
+              "duration_ms": 0.2,
+              "hit": true,
+              "scoped": false,
+              "stage": "duckdb_cache"
+            }
+          ],
+          "input_kind": "native_report",
+          "parquet_export_label": "report-cf7a0fe0e79a6f89-parquet",
+          "paths_hidden": true,
+          "report_count": 1,
+          "source_kind": "nsys_export_parquet_duckdb",
+          "state": "ready"
+        },
+        "command": "nsys_query_report",
+        "multi_report": false,
+        "paths_hidden": true,
+        "report_count": 1,
+        "report_label": "fbp-native.nsys-rep (1 reports)",
+        "schema": "nsys-report-evidence-v1",
+        "source": "nsight-systems-report",
+        "source_kind": "nsys_export_parquet_duckdb"
+      },
+      "ok": true,
+      "returned_row_count": 4,
+      "row_key_policy": "Ad-hoc SQL rows do not receive synthetic keys; select stable identity columns such as __report_label, ids, names, start, and end when rows must be cited or compared.",
+      "rows": [
+        {
+          "phase": "batched_2d.rows128.parzen.repeat1",
+          "wall_ms": 79.870306
+        },
+        {
+          "phase": "native_2d.rows128.parzen.repeat1",
+          "wall_ms": 75.385795
+        },
+        {
+          "phase": "persistent_2d.rows128.parzen.repeat1",
+          "wall_ms": 70.317114
+        },
+        {
+          "phase": "production.rows128.parzen.repeat1",
+          "wall_ms": 134.262463
+        }
+      ],
+      "sql": "SELECT n.text AS phase, (n.\"end\"-n.start)/1e6 AS wall_ms FROM NVTX_EVENTS n WHERE n.text LIKE '%.rows128.parzen.repeat1' ORDER BY phase LIMIT 10",
+      "truncated_rows": false
+    },
+    "ok": true,
+    "paths_hidden": true,
+    "schema_version": "nsys-agent-json-v1",
+    "source": {
+      "interface": "json-cli",
+      "kind": "nsys-agent",
+      "project": "nsys-agent-tools"
+    }
+  },
+  "scoped_apis": {
+    "command": "report-query",
+    "data": {
+      "columns": [
+        "phase",
+        "api",
+        "calls",
+        "host_ms"
+      ],
+      "evidence": {
+        "cache": {
+          "backend": "parquet_duckdb",
+          "cache_artifact_label": "report-cf7a0fe0e79a6f89.duckdb",
+          "cache_artifact_ready": true,
+          "diagnostics": [
+            {
+              "duration_ms": 0.3,
+              "hit": true,
+              "scoped": false,
+              "stage": "duckdb_cache"
+            }
+          ],
+          "input_kind": "native_report",
+          "parquet_export_label": "report-cf7a0fe0e79a6f89-parquet",
+          "paths_hidden": true,
+          "report_count": 1,
+          "source_kind": "nsys_export_parquet_duckdb",
+          "state": "ready"
+        },
+        "command": "nsys_query_report",
+        "multi_report": false,
+        "paths_hidden": true,
+        "report_count": 1,
+        "report_label": "fbp-native.nsys-rep (1 reports)",
+        "schema": "nsys-report-evidence-v1",
+        "source": "nsight-systems-report",
+        "source_kind": "nsys_export_parquet_duckdb"
+      },
+      "ok": true,
+      "returned_row_count": 67,
+      "row_key_policy": "Ad-hoc SQL rows do not receive synthetic keys; select stable identity columns such as __report_label, ids, names, start, and end when rows must be cited or compared.",
+      "rows": [
+        {
+          "api": "cudaStreamSynchronize_v3020",
+          "calls": 5,
+          "host_ms": 77.912376,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaLaunchKernel_v7000",
+          "calls": 92,
+          "host_ms": 0.395042,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cuLaunchKernel",
+          "calls": 24,
+          "host_ms": 0.203236,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMemsetAsync_v3020",
+          "calls": 8,
+          "host_ms": 0.086967,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMemcpyToSymbolAsync_v3020",
+          "calls": 4,
+          "host_ms": 0.03792,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaCreateTextureObject_v5000",
+          "calls": 4,
+          "host_ms": 0.018046,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaDestroyTextureObject_v5000",
+          "calls": 4,
+          "host_ms": 0.011522,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMemcpyAsync_v3020",
+          "calls": 1,
+          "host_ms": 0.010119,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventQuery_v3020",
+          "calls": 2,
+          "host_ms": 0.005952,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventRecord_v3020",
+          "calls": 1,
+          "host_ms": 0.00492,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventDestroy_v3020",
+          "calls": 2,
+          "host_ms": 0.003377,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventCreateWithFlags_v3020",
+          "calls": 1,
+          "host_ms": 0.002966,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamIsCapturing_v10000",
+          "calls": 1,
+          "host_ms": 0.001272,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamSynchronize_v3020",
+          "calls": 261,
+          "host_ms": 54.648606,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaLaunchKernel_v7000",
+          "calls": 2944,
+          "host_ms": 12.415329,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMemcpyToSymbolAsync_v3020",
+          "calls": 512,
+          "host_ms": 2.162388,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamCreate_v3020",
+          "calls": 128,
+          "host_ms": 0.522478,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamDestroy_v5050",
+          "calls": 128,
+          "host_ms": 0.483763,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaCreateTextureObject_v5000",
+          "calls": 128,
+          "host_ms": 0.435717,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventRecord_v3020",
+          "calls": 129,
+          "host_ms": 0.264884,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaDestroyTextureObject_v5000",
+          "calls": 128,
+          "host_ms": 0.195342,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cuLaunchKernel",
+          "calls": 24,
+          "host_ms": 0.188578,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventCreateWithFlags_v3020",
+          "calls": 129,
+          "host_ms": 0.148193,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamWaitEvent_v3020",
+          "calls": 128,
+          "host_ms": 0.116556,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventDestroy_v3020",
+          "calls": 129,
+          "host_ms": 0.10787,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMemsetAsync_v3020",
+          "calls": 8,
+          "host_ms": 0.087906,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMemcpyAsync_v3020",
+          "calls": 1,
+          "host_ms": 0.009608,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventQuery_v3020",
+          "calls": 2,
+          "host_ms": 0.005541,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamIsCapturing_v10000",
+          "calls": 1,
+          "host_ms": 0.001493,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamSynchronize_v3020",
+          "calls": 137,
+          "host_ms": 54.942134,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaLaunchKernel_v7000",
+          "calls": 2944,
+          "host_ms": 11.745403,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaCreateTextureObject_v5000",
+          "calls": 128,
+          "host_ms": 0.356961,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cuLaunchKernel",
+          "calls": 24,
+          "host_ms": 0.186559,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaDestroyTextureObject_v5000",
+          "calls": 128,
+          "host_ms": 0.156752,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMemsetAsync_v3020",
+          "calls": 8,
+          "host_ms": 0.082148,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMemcpyToSymbolAsync_v3020",
+          "calls": 16,
+          "host_ms": 0.081125,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamCreate_v3020",
+          "calls": 4,
+          "host_ms": 0.025017,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamDestroy_v5050",
+          "calls": 4,
+          "host_ms": 0.018795,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventRecord_v3020",
+          "calls": 5,
+          "host_ms": 0.013175,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMemcpyAsync_v3020",
+          "calls": 1,
+          "host_ms": 0.009538,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventCreateWithFlags_v3020",
+          "calls": 5,
+          "host_ms": 0.009228,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventDestroy_v3020",
+          "calls": 5,
+          "host_ms": 0.00551,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventQuery_v3020",
+          "calls": 2,
+          "host_ms": 0.00544,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamWaitEvent_v3020",
+          "calls": 4,
+          "host_ms": 0.005361,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamIsCapturing_v10000",
+          "calls": 1,
+          "host_ms": 0.001313,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamSynchronize_v3020",
+          "calls": 386,
+          "host_ms": 57.723354,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMemGetInfo_v3020",
+          "calls": 1024,
+          "host_ms": 18.528325,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaLaunchKernel_v7000",
+          "calls": 2944,
+          "host_ms": 12.892871,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMallocPitch_v3020",
+          "calls": 256,
+          "host_ms": 11.948082,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaFree_v3020",
+          "calls": 256,
+          "host_ms": 8.527071,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMemcpy2D_v3020",
+          "calls": 256,
+          "host_ms": 3.137018,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMemcpyToSymbolAsync_v3020",
+          "calls": 512,
+          "host_ms": 2.310016,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMemcpyAsync_v3020",
+          "calls": 129,
+          "host_ms": 1.716252,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cuLaunchKernel",
+          "calls": 152,
+          "host_ms": 1.388942,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMemset2D_v3020",
+          "calls": 128,
+          "host_ms": 0.923076,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamCreate_v3020",
+          "calls": 129,
+          "host_ms": 0.720797,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamDestroy_v5050",
+          "calls": 129,
+          "host_ms": 0.584902,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaCreateTextureObject_v5000",
+          "calls": 128,
+          "host_ms": 0.529111,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaDeviceSynchronize_v3020",
+          "calls": 128,
+          "host_ms": 0.413455,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventRecord_v3020",
+          "calls": 131,
+          "host_ms": 0.31157,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaDestroyTextureObject_v5000",
+          "calls": 128,
+          "host_ms": 0.250454,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamWaitEvent_v3020",
+          "calls": 130,
+          "host_ms": 0.187682,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventCreateWithFlags_v3020",
+          "calls": 131,
+          "host_ms": 0.180864,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventDestroy_v3020",
+          "calls": 131,
+          "host_ms": 0.125747,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaMemsetAsync_v3020",
+          "calls": 4,
+          "host_ms": 0.048192,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaEventQuery_v3020",
+          "calls": 1,
+          "host_ms": 0.002856,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "api": "cudaStreamIsCapturing_v10000",
+          "calls": 1,
+          "host_ms": 0.002033,
+          "phase": "production.rows128.parzen.repeat1"
+        }
+      ],
+      "sql": "SELECT n.text AS phase, names.value AS api, COUNT(*) AS calls, SUM(a.\"end\"-a.start)/1e6 AS host_ms FROM NVTX_EVENTS n JOIN CUPTI_ACTIVITY_KIND_RUNTIME a ON a.globalTid = n.globalTid AND a.start >= n.start AND a.\"end\" <= n.\"end\" JOIN StringIds names ON names.id=a.nameId WHERE n.text LIKE '%.rows128.parzen.repeat1' GROUP BY n.text, names.value ORDER BY phase, host_ms DESC LIMIT 100",
+      "truncated_rows": false
+    },
+    "ok": true,
+    "paths_hidden": true,
+    "schema_version": "nsys-agent-json-v1",
+    "source": {
+      "interface": "json-cli",
+      "kind": "nsys-agent",
+      "project": "nsys-agent-tools"
+    }
+  },
+  "scoped_bp_kernels": {
+    "command": "report-query",
+    "data": {
+      "columns": [
+        "phase",
+        "kernel",
+        "launches",
+        "gpu_ms"
+      ],
+      "evidence": {
+        "cache": {
+          "backend": "parquet_duckdb",
+          "cache_artifact_label": "report-cf7a0fe0e79a6f89.duckdb",
+          "cache_artifact_ready": true,
+          "diagnostics": [
+            {
+              "duration_ms": 0.2,
+              "hit": true,
+              "scoped": false,
+              "stage": "duckdb_cache"
+            }
+          ],
+          "input_kind": "native_report",
+          "parquet_export_label": "report-cf7a0fe0e79a6f89-parquet",
+          "paths_hidden": true,
+          "report_count": 1,
+          "source_kind": "nsys_export_parquet_duckdb",
+          "state": "ready"
+        },
+        "command": "nsys_query_report",
+        "multi_report": false,
+        "paths_hidden": true,
+        "report_count": 1,
+        "report_label": "fbp-native.nsys-rep (1 reports)",
+        "schema": "nsys-report-evidence-v1",
+        "source": "nsight-systems-report",
+        "source_kind": "nsys_export_parquet_duckdb"
+      },
+      "ok": true,
+      "returned_row_count": 4,
+      "row_key_policy": "Ad-hoc SQL rows do not receive synthetic keys; select stable identity columns such as __report_label, ids, names, start, and end when rows must be cited or compared.",
+      "rows": [
+        {
+          "gpu_ms": 73.069149,
+          "kernel": "batch_backproject",
+          "launches": 92,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "gpu_ms": 59.972773,
+          "kernel": "devBP",
+          "launches": 2944,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "gpu_ms": 59.940163,
+          "kernel": "devBP",
+          "launches": 2944,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "gpu_ms": 63.225092,
+          "kernel": "devBP",
+          "launches": 2944,
+          "phase": "production.rows128.parzen.repeat1"
+        }
+      ],
+      "sql": "SELECT n.text AS phase, names.value AS kernel, COUNT(*) AS launches, SUM(k.\"end\"-k.start)/1e6 AS gpu_ms FROM NVTX_EVENTS n JOIN CUPTI_ACTIVITY_KIND_RUNTIME a ON a.globalTid = n.globalTid AND a.start >= n.start AND a.\"end\" <= n.\"end\" JOIN CUPTI_ACTIVITY_KIND_KERNEL k ON k.correlationId=a.correlationId AND k.globalPid=((a.globalTid >> 24) << 24) JOIN StringIds names ON names.id=k.shortName WHERE n.text LIKE '%.rows128.parzen.repeat1' AND (names.value LIKE '%devBP%' OR names.value LIKE '%batch_backproject%') GROUP BY n.text, names.value ORDER BY phase LIMIT 10",
+      "truncated_rows": false
+    },
+    "ok": true,
+    "paths_hidden": true,
+    "schema_version": "nsys-agent-json-v1",
+    "source": {
+      "interface": "json-cli",
+      "kind": "nsys-agent",
+      "project": "nsys-agent-tools"
+    }
+  },
+  "scoped_copies": {
+    "command": "report-query",
+    "data": {
+      "columns": [
+        "phase",
+        "copy_kind",
+        "copies",
+        "bytes",
+        "gpu_ms"
+      ],
+      "evidence": {
+        "cache": {
+          "backend": "parquet_duckdb",
+          "cache_artifact_label": "report-cf7a0fe0e79a6f89.duckdb",
+          "cache_artifact_ready": true,
+          "diagnostics": [
+            {
+              "duration_ms": 0.3,
+              "hit": true,
+              "scoped": false,
+              "stage": "duckdb_cache"
+            }
+          ],
+          "input_kind": "native_report",
+          "parquet_export_label": "report-cf7a0fe0e79a6f89-parquet",
+          "paths_hidden": true,
+          "report_count": 1,
+          "source_kind": "nsys_export_parquet_duckdb",
+          "state": "ready"
+        },
+        "command": "nsys_query_report",
+        "multi_report": false,
+        "paths_hidden": true,
+        "report_count": 1,
+        "report_label": "fbp-native.nsys-rep (1 reports)",
+        "schema": "nsys-report-evidence-v1",
+        "source": "nsight-systems-report",
+        "source_kind": "nsys_export_parquet_duckdb"
+      },
+      "ok": true,
+      "returned_row_count": 6,
+      "row_key_policy": "Ad-hoc SQL rows do not receive synthetic keys; select stable identity columns such as __report_label, ids, names, start, and end when rows must be cited or compared.",
+      "rows": [
+        {
+          "bytes": 23040,
+          "copies": 4,
+          "copy_kind": 8,
+          "gpu_ms": 0.006464,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "bytes": 2052,
+          "copies": 1,
+          "copy_kind": 1,
+          "gpu_ms": 0.000384,
+          "phase": "batched_2d.rows128.parzen.repeat1"
+        },
+        {
+          "bytes": 739332,
+          "copies": 513,
+          "copy_kind": 1,
+          "gpu_ms": 0.171708,
+          "phase": "native_2d.rows128.parzen.repeat1"
+        },
+        {
+          "bytes": 25092,
+          "copies": 17,
+          "copy_kind": 1,
+          "gpu_ms": 0.00576,
+          "phase": "persistent_2d.rows128.parzen.repeat1"
+        },
+        {
+          "bytes": 362807296,
+          "copies": 384,
+          "copy_kind": 8,
+          "gpu_ms": 1.407731,
+          "phase": "production.rows128.parzen.repeat1"
+        },
+        {
+          "bytes": 739332,
+          "copies": 513,
+          "copy_kind": 1,
+          "gpu_ms": 0.189981,
+          "phase": "production.rows128.parzen.repeat1"
+        }
+      ],
+      "sql": "SELECT n.text AS phase, m.copyKind AS copy_kind, COUNT(*) AS copies, SUM(m.bytes) AS bytes, SUM(m.\"end\"-m.start)/1e6 AS gpu_ms FROM NVTX_EVENTS n JOIN CUPTI_ACTIVITY_KIND_RUNTIME a ON a.globalTid = n.globalTid AND a.start >= n.start AND a.\"end\" <= n.\"end\" JOIN CUPTI_ACTIVITY_KIND_MEMCPY m ON m.correlationId=a.correlationId AND m.globalPid=((a.globalTid >> 24) << 24) WHERE n.text LIKE '%.rows128.parzen.repeat1' GROUP BY n.text, m.copyKind ORDER BY phase, bytes DESC LIMIT 20",
+      "truncated_rows": false
+    },
+    "ok": true,
+    "paths_hidden": true,
+    "schema_version": "nsys-agent-json-v1",
+    "source": {
+      "interface": "json-cli",
+      "kind": "nsys-agent",
+      "project": "nsys-agent-tools"
+    }
+  }
+}

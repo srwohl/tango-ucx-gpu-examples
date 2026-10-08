@@ -1,0 +1,3742 @@
+{
+  "created_utc": "2026-10-07T19:39:15Z",
+  "executable_sha256": "06eb8e7cc09607081e58434fb2fae2d56f97f976729ab9515516c61cec6c3b82",
+  "current_transport_library_sha256": "2067717be98b974bb84a0ca1565b6d630180b9929fcd8c79db1cf0e811fe9cb8",
+  "header": [
+    {
+      "arguments": [
+        "--header",
+        "--frames",
+        "3000000",
+        "--fields",
+        "0"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 0.5307671600003232,
+      "result": {
+        "checksum": 337504387498500000,
+        "encode_decode_ns_per_frame": 40.930894,
+        "field_bytes": 0,
+        "header_bytes": 48,
+        "iterations": 3000000
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--header",
+        "--frames",
+        "3000000",
+        "--fields",
+        "0"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 0.48571348400037095,
+      "result": {
+        "checksum": 337504387498500000,
+        "encode_decode_ns_per_frame": 26.361951333333334,
+        "field_bytes": 0,
+        "header_bytes": 48,
+        "iterations": 3000000
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--header",
+        "--frames",
+        "3000000",
+        "--fields",
+        "0"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 0.48999844000172743,
+      "result": {
+        "checksum": 337504387498500000,
+        "encode_decode_ns_per_frame": 27.526882666666666,
+        "field_bytes": 0,
+        "header_bytes": 48,
+        "iterations": 3000000
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--header",
+        "--frames",
+        "3000000",
+        "--fields",
+        "40"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 0.48278352600027574,
+      "result": {
+        "checksum": 337504387498500000,
+        "encode_decode_ns_per_frame": 26.010570333333334,
+        "field_bytes": 40,
+        "header_bytes": 88,
+        "iterations": 3000000
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--header",
+        "--frames",
+        "3000000",
+        "--fields",
+        "40"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 0.4815566540000873,
+      "result": {
+        "checksum": 337504387498500000,
+        "encode_decode_ns_per_frame": 25.703837333333333,
+        "field_bytes": 40,
+        "header_bytes": 88,
+        "iterations": 3000000
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--header",
+        "--frames",
+        "3000000",
+        "--fields",
+        "40"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 0.4783572540000023,
+      "result": {
+        "checksum": 337504387498500000,
+        "encode_decode_ns_per_frame": 23.783166,
+        "field_bytes": 40,
+        "header_bytes": 88,
+        "iterations": 3000000
+      },
+      "stderr": ""
+    }
+  ],
+  "transfers": [
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "0",
+        "--batch",
+        "1"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.075951263999741,
+      "result": {
+        "acquire_ns": 10900675,
+        "batch": 1,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 3106.6318,
+        "open_handle_ns": 4226324,
+        "publisher_create_ns": 811750198,
+        "receiver": {
+          "batches": 5000,
+          "failure": "",
+          "native_ready_ns": 957170,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 809165167,
+          "receive_ns": 15529111,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 311,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 15533159,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "0",
+        "--batch",
+        "1"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.074584052999853,
+      "result": {
+        "acquire_ns": 9904460,
+        "batch": 1,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 2595.2978,
+        "open_handle_ns": 3666230,
+        "publisher_create_ns": 809235915,
+        "receiver": {
+          "batches": 5000,
+          "failure": "",
+          "native_ready_ns": 1001133,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 809467769,
+          "receive_ns": 12923288,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 343,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 12976489,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "0",
+        "--batch",
+        "1"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.073484541000653,
+      "result": {
+        "acquire_ns": 9983668,
+        "batch": 1,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 2897.0656,
+        "open_handle_ns": 1898589,
+        "publisher_create_ns": 811570651,
+        "receiver": {
+          "batches": 5000,
+          "failure": "",
+          "native_ready_ns": 1026221,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 811011761,
+          "receive_ns": 14430423,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 309,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 14485328,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "0",
+        "--batch",
+        "16"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.071817109001131,
+      "result": {
+        "acquire_ns": 5701575,
+        "batch": 16,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 1523.434,
+        "open_handle_ns": 3795585,
+        "publisher_create_ns": 808556168,
+        "receiver": {
+          "batches": 313,
+          "failure": "",
+          "native_ready_ns": 1506334,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 812273177,
+          "receive_ns": 7372505,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 208,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 7617170,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "0",
+        "--batch",
+        "16"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.0737313160007034,
+      "result": {
+        "acquire_ns": 8356593,
+        "batch": 16,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 2051.2858,
+        "open_handle_ns": 3806847,
+        "publisher_create_ns": 811129426,
+        "receiver": {
+          "batches": 313,
+          "failure": "",
+          "native_ready_ns": 1128215,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 812163556,
+          "receive_ns": 10188169,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 212,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 10256429,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "0",
+        "--batch",
+        "16"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.0712605170010647,
+      "result": {
+        "acquire_ns": 7581556,
+        "batch": 16,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 1765.873,
+        "open_handle_ns": 4248887,
+        "publisher_create_ns": 808541493,
+        "receiver": {
+          "batches": 313,
+          "failure": "",
+          "native_ready_ns": 1092577,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 809467708,
+          "receive_ns": 8733944,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 247,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 8829365,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "0",
+        "--batch",
+        "128"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.083871380000346,
+      "result": {
+        "acquire_ns": 6711215,
+        "batch": 128,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 1588.3798,
+        "open_handle_ns": 4328158,
+        "publisher_create_ns": 814570833,
+        "receiver": {
+          "batches": 40,
+          "failure": "",
+          "native_ready_ns": 990603,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 820545975,
+          "receive_ns": 7879079,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 39,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 7941899,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "0",
+        "--batch",
+        "128"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.0698075809996226,
+      "result": {
+        "acquire_ns": 6354440,
+        "batch": 128,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 1643.0254,
+        "open_handle_ns": 1870757,
+        "publisher_create_ns": 810601043,
+        "receiver": {
+          "batches": 40,
+          "failure": "",
+          "native_ready_ns": 1033214,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 811828018,
+          "receive_ns": 7936688,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 39,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 8215127,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "0",
+        "--batch",
+        "128"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.0693960869994044,
+      "result": {
+        "acquire_ns": 7756322,
+        "batch": 128,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 1767.5944,
+        "open_handle_ns": 4148577,
+        "publisher_create_ns": 811400550,
+        "receiver": {
+          "batches": 40,
+          "failure": "",
+          "native_ready_ns": 1001654,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 809760354,
+          "receive_ns": 8790712,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 39,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 8837972,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "40",
+        "--batch",
+        "1"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.0798625919996994,
+      "result": {
+        "acquire_ns": 9058592,
+        "batch": 1,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 2578.0512,
+        "open_handle_ns": 3967081,
+        "publisher_create_ns": 809116945,
+        "receiver": {
+          "batches": 5000,
+          "failure": "",
+          "native_ready_ns": 986816,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 814201213,
+          "receive_ns": 12843887,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 313,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 12890256,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "40",
+        "--batch",
+        "1"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.0763242129996797,
+      "result": {
+        "acquire_ns": 9278489,
+        "batch": 1,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 2755.9836,
+        "open_handle_ns": 1793009,
+        "publisher_create_ns": 809585664,
+        "receiver": {
+          "batches": 5000,
+          "failure": "",
+          "native_ready_ns": 1047171,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 811858627,
+          "receive_ns": 13736254,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 304,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 13779918,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "40",
+        "--batch",
+        "1"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.0744414709988632,
+      "result": {
+        "acquire_ns": 8242434,
+        "batch": 1,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 2549.3006,
+        "open_handle_ns": 2852994,
+        "publisher_create_ns": 807360700,
+        "receiver": {
+          "batches": 5000,
+          "failure": "",
+          "native_ready_ns": 1149365,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 811541802,
+          "receive_ns": 12694134,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 304,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 12746503,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "40",
+        "--batch",
+        "16"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.1305443290002586,
+      "result": {
+        "acquire_ns": 5133595,
+        "batch": 16,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 1542.164,
+        "open_handle_ns": 4290997,
+        "publisher_create_ns": 810805957,
+        "receiver": {
+          "batches": 313,
+          "failure": "",
+          "native_ready_ns": 1036581,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 812434446,
+          "receive_ns": 7671766,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 226,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 7710820,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "40",
+        "--batch",
+        "16"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.2027768829993875,
+      "result": {
+        "acquire_ns": 7827391,
+        "batch": 16,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 2055.075,
+        "open_handle_ns": 3349318,
+        "publisher_create_ns": 887611653,
+        "receiver": {
+          "batches": 313,
+          "failure": "",
+          "native_ready_ns": 886916,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 815491515,
+          "receive_ns": 10207646,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 195,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 10275375,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "40",
+        "--batch",
+        "16"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.2082578520003153,
+      "result": {
+        "acquire_ns": 6253321,
+        "batch": 16,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 1761.1722,
+        "open_handle_ns": 3502829,
+        "publisher_create_ns": 897073550,
+        "receiver": {
+          "batches": 313,
+          "failure": "",
+          "native_ready_ns": 1371347,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 809895553,
+          "receive_ns": 8687747,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 252,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 8805861,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "40",
+        "--batch",
+        "128"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.2043698800007405,
+      "result": {
+        "acquire_ns": 8516539,
+        "batch": 128,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 2225.513,
+        "open_handle_ns": 2292108,
+        "publisher_create_ns": 891253503,
+        "receiver": {
+          "batches": 40,
+          "failure": "",
+          "native_ready_ns": 1012606,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 808392262,
+          "receive_ns": 11061961,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 39,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 11127565,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "40",
+        "--batch",
+        "128"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.223685271999784,
+      "result": {
+        "acquire_ns": 5840020,
+        "batch": 128,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 1632.5818,
+        "open_handle_ns": 4538448,
+        "publisher_create_ns": 892472759,
+        "receiver": {
+          "batches": 40,
+          "failure": "",
+          "native_ready_ns": 1069573,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 810861884,
+          "receive_ns": 8094489,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 39,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 8162909,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "128",
+        "--fields",
+        "40",
+        "--batch",
+        "128"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.219166169001255,
+      "result": {
+        "acquire_ns": 8179293,
+        "batch": 128,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 128,
+        "max_wait_us": 10000,
+        "ns_per_frame": 2141.4574,
+        "open_handle_ns": 3832095,
+        "publisher_create_ns": 898078635,
+        "receiver": {
+          "batches": 40,
+          "failure": "",
+          "native_ready_ns": 1035849,
+          "outcome": 1,
+          "payload_bytes": 640000,
+          "prepare_ns": 809278883,
+          "receive_ns": 10663714,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 40,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 10707287,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "0",
+        "--batch",
+        "1"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.373040193999259,
+      "result": {
+        "acquire_ns": 36441344,
+        "batch": 1,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 34936.8758,
+        "open_handle_ns": 4314794,
+        "publisher_create_ns": 891221666,
+        "receiver": {
+          "batches": 5000,
+          "failure": "",
+          "native_ready_ns": 977940,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 809832051,
+          "receive_ns": 174567437,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 2939,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 174684379,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "0",
+        "--batch",
+        "1"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.3643940790007036,
+      "result": {
+        "acquire_ns": 32763398,
+        "batch": 1,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 32827.2296,
+        "open_handle_ns": 3662112,
+        "publisher_create_ns": 891938297,
+        "receiver": {
+          "batches": 5000,
+          "failure": "",
+          "native_ready_ns": 1004430,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 809082584,
+          "receive_ns": 164077917,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 3143,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 164136148,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "0",
+        "--batch",
+        "1"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.4089607909991173,
+      "result": {
+        "acquire_ns": 86267116,
+        "batch": 1,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 42623.1038,
+        "open_handle_ns": 3619170,
+        "publisher_create_ns": 890615550,
+        "receiver": {
+          "batches": 5000,
+          "failure": "",
+          "native_ready_ns": 1438835,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 807427475,
+          "receive_ns": 213009036,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 2622,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 213115519,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "0",
+        "--batch",
+        "16"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.403726792999805,
+      "result": {
+        "acquire_ns": 87869220,
+        "batch": 16,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 40173.3626,
+        "open_handle_ns": 3824892,
+        "publisher_create_ns": 899578068,
+        "receiver": {
+          "batches": 320,
+          "failure": "",
+          "native_ready_ns": 998739,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 808629487,
+          "receive_ns": 200771141,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 320,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 200866813,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "0",
+        "--batch",
+        "16"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.3684419410001283,
+      "result": {
+        "acquire_ns": 29398651,
+        "batch": 16,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 32830.6248,
+        "open_handle_ns": 4066992,
+        "publisher_create_ns": 890336647,
+        "receiver": {
+          "batches": 320,
+          "failure": "",
+          "native_ready_ns": 950617,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 812354768,
+          "receive_ns": 164082270,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 320,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 164153124,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "0",
+        "--batch",
+        "16"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.407359234000978,
+      "result": {
+        "acquire_ns": 81012730,
+        "batch": 16,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 40512.6004,
+        "open_handle_ns": 4466863,
+        "publisher_create_ns": 889012007,
+        "receiver": {
+          "batches": 320,
+          "failure": "",
+          "native_ready_ns": 947030,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 811911232,
+          "receive_ns": 202464705,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 320,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 202563002,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "0",
+        "--batch",
+        "128"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.3818868969992764,
+      "result": {
+        "acquire_ns": 43867107,
+        "batch": 128,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 34525.119,
+        "open_handle_ns": 2651862,
+        "publisher_create_ns": 899599534,
+        "receiver": {
+          "batches": 51,
+          "failure": "",
+          "native_ready_ns": 1092167,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 809628950,
+          "receive_ns": 172521397,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 51,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 172625595,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "0",
+        "--batch",
+        "128"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.401289186998838,
+      "result": {
+        "acquire_ns": 81099154,
+        "batch": 128,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 40190.531,
+        "open_handle_ns": 4181119,
+        "publisher_create_ns": 887614716,
+        "receiver": {
+          "batches": 51,
+          "failure": "",
+          "native_ready_ns": 1065526,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 811338438,
+          "receive_ns": 200799393,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 51,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 200952655,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "0",
+        "--batch",
+        "128"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.36906966099923,
+      "result": {
+        "acquire_ns": 34082964,
+        "batch": 128,
+        "field_bytes": 0,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 32183.0328,
+        "open_handle_ns": 4105165,
+        "publisher_create_ns": 900812998,
+        "receiver": {
+          "batches": 51,
+          "failure": "",
+          "native_ready_ns": 970465,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 808057818,
+          "receive_ns": 160864758,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 51,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 160915164,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "40",
+        "--batch",
+        "1"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.411921306000295,
+      "result": {
+        "acquire_ns": 48112024,
+        "batch": 1,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 41482.5582,
+        "open_handle_ns": 3611857,
+        "publisher_create_ns": 896258426,
+        "receiver": {
+          "batches": 5000,
+          "failure": "",
+          "native_ready_ns": 1503179,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 809826718,
+          "receive_ns": 207224904,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 2991,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 207412791,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "40",
+        "--batch",
+        "1"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.4155074869995588,
+      "result": {
+        "acquire_ns": 77918774,
+        "batch": 1,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 40177.489,
+        "open_handle_ns": 3747485,
+        "publisher_create_ns": 886394501,
+        "receiver": {
+          "batches": 5000,
+          "failure": "",
+          "native_ready_ns": 1057580,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 812534975,
+          "receive_ns": 200802805,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 2727,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 200887445,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "40",
+        "--batch",
+        "1"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.3783445700009906,
+      "result": {
+        "acquire_ns": 33839640,
+        "batch": 1,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 33582.761,
+        "open_handle_ns": 3717608,
+        "publisher_create_ns": 903511924,
+        "receiver": {
+          "batches": 5000,
+          "failure": "",
+          "native_ready_ns": 1113116,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 809190804,
+          "receive_ns": 167832380,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 3192,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 167913805,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "40",
+        "--batch",
+        "16"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.381042430999514,
+      "result": {
+        "acquire_ns": 35533816,
+        "batch": 16,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 34789.3214,
+        "open_handle_ns": 1754636,
+        "publisher_create_ns": 888809718,
+        "receiver": {
+          "batches": 320,
+          "failure": "",
+          "native_ready_ns": 1065416,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 815906038,
+          "receive_ns": 173865633,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 320,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 173946607,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "40",
+        "--batch",
+        "16"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.3709205470004235,
+      "result": {
+        "acquire_ns": 33502014,
+        "batch": 16,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 33214.323,
+        "open_handle_ns": 3288192,
+        "publisher_create_ns": 890818767,
+        "receiver": {
+          "batches": 320,
+          "failure": "",
+          "native_ready_ns": 1014970,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 809815556,
+          "receive_ns": 165995020,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 320,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 166071615,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "40",
+        "--batch",
+        "16"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.4007058100014547,
+      "result": {
+        "acquire_ns": 57058996,
+        "batch": 16,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 36462.7438,
+        "open_handle_ns": 2035019,
+        "publisher_create_ns": 891825127,
+        "receiver": {
+          "batches": 320,
+          "failure": "",
+          "native_ready_ns": 998839,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 815676927,
+          "receive_ns": 182196676,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 320,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 182313719,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "40",
+        "--batch",
+        "128"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.3640021349983726,
+      "result": {
+        "acquire_ns": 35331203,
+        "batch": 128,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 33081.3066,
+        "open_handle_ns": 2328958,
+        "publisher_create_ns": 895298119,
+        "receiver": {
+          "batches": 51,
+          "failure": "",
+          "native_ready_ns": 1007445,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 809109227,
+          "receive_ns": 165326141,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 49,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 165406533,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "40",
+        "--batch",
+        "128"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.4127380390000326,
+      "result": {
+        "acquire_ns": 73498499,
+        "batch": 128,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 39997.3566,
+        "open_handle_ns": 3929651,
+        "publisher_create_ns": 891412538,
+        "receiver": {
+          "batches": 51,
+          "failure": "",
+          "native_ready_ns": 1493740,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 810875293,
+          "receive_ns": 199903465,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 51,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 199986783,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--fields",
+        "40",
+        "--batch",
+        "128"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.4319705790003354,
+      "result": {
+        "acquire_ns": 91751748,
+        "batch": 128,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 45060.6284,
+        "open_handle_ns": 4480589,
+        "publisher_create_ns": 893779347,
+        "receiver": {
+          "batches": 51,
+          "failure": "",
+          "native_ready_ns": 1017044,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 810278666,
+          "receive_ns": 225149981,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 51,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": false,
+        "transfer_ns": 225303142,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 0
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 0
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    }
+  ],
+  "raw_segments": [
+    {
+      "arguments": [
+        "--raw",
+        "--bytes",
+        "75000"
+      ],
+      "environment": {
+        "UCX_SYSV_SEG_SIZE": "8256"
+      },
+      "returncode": 0,
+      "elapsed_s": 1.3986218600002758,
+      "result": {
+        "arrived": true,
+        "expected_bytes": 75000,
+        "first_header_word": 11936128518282651045,
+        "header_bytes": 88,
+        "raw_ucx": true,
+        "received_bytes": 75000,
+        "rendezvous": false,
+        "valid": true
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--raw",
+        "--bytes",
+        "65000"
+      ],
+      "environment": {
+        "UCX_SYSV_SEG_SIZE": "256K"
+      },
+      "returncode": 0,
+      "elapsed_s": 1.4105977280014486,
+      "result": {
+        "arrived": true,
+        "expected_bytes": 65000,
+        "first_header_word": 11936128518282651045,
+        "header_bytes": 88,
+        "raw_ucx": true,
+        "received_bytes": 65000,
+        "rendezvous": false,
+        "valid": true
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--raw",
+        "--bytes",
+        "65400"
+      ],
+      "environment": {
+        "UCX_SYSV_SEG_SIZE": "256K"
+      },
+      "returncode": 0,
+      "elapsed_s": 1.4094260570000188,
+      "result": {
+        "arrived": true,
+        "expected_bytes": 65400,
+        "first_header_word": 11936128518282651045,
+        "header_bytes": 88,
+        "raw_ucx": true,
+        "received_bytes": 65400,
+        "rendezvous": false,
+        "valid": true
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--raw",
+        "--bytes",
+        "65535"
+      ],
+      "environment": {
+        "UCX_SYSV_SEG_SIZE": "256K"
+      },
+      "returncode": 2,
+      "elapsed_s": 1.4165119680001226,
+      "result": {
+        "arrived": true,
+        "expected_bytes": 65535,
+        "first_header_word": 6510615555426900480,
+        "header_bytes": 88,
+        "raw_ucx": true,
+        "received_bytes": 18446744073709551615,
+        "rendezvous": false,
+        "valid": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--raw",
+        "--bytes",
+        "65536"
+      ],
+      "environment": {
+        "UCX_SYSV_SEG_SIZE": "256K"
+      },
+      "returncode": 2,
+      "elapsed_s": 1.4020166840000456,
+      "result": {
+        "arrived": true,
+        "expected_bytes": 65536,
+        "first_header_word": 6510615555426900570,
+        "header_bytes": 88,
+        "raw_ucx": true,
+        "received_bytes": 0,
+        "rendezvous": false,
+        "valid": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--raw",
+        "--bytes",
+        "65537"
+      ],
+      "environment": {
+        "UCX_SYSV_SEG_SIZE": "256K"
+      },
+      "returncode": 2,
+      "elapsed_s": 1.411477890000242,
+      "result": {
+        "arrived": true,
+        "expected_bytes": 65537,
+        "first_header_word": 6510615555426900570,
+        "header_bytes": 88,
+        "raw_ucx": true,
+        "received_bytes": 1,
+        "rendezvous": false,
+        "valid": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--raw",
+        "--bytes",
+        "66000"
+      ],
+      "environment": {
+        "UCX_SYSV_SEG_SIZE": "256K"
+      },
+      "returncode": 2,
+      "elapsed_s": 1.4030820640000456,
+      "result": {
+        "arrived": true,
+        "expected_bytes": 66000,
+        "first_header_word": 6510615555426900570,
+        "header_bytes": 88,
+        "raw_ucx": true,
+        "received_bytes": 464,
+        "rendezvous": false,
+        "valid": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--raw",
+        "--bytes",
+        "75000"
+      ],
+      "environment": {
+        "UCX_SYSV_SEG_SIZE": "256K"
+      },
+      "returncode": 2,
+      "elapsed_s": 1.419755222999811,
+      "result": {
+        "arrived": true,
+        "expected_bytes": 75000,
+        "first_header_word": 6510615555426900570,
+        "header_bytes": 88,
+        "raw_ucx": true,
+        "received_bytes": 9464,
+        "rendezvous": false,
+        "valid": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--raw",
+        "--bytes",
+        "75000"
+      ],
+      "environment": {
+        "UCX_SYSV_SEG_SIZE": "1M"
+      },
+      "returncode": 2,
+      "elapsed_s": 1.4053786940003192,
+      "result": {
+        "arrived": true,
+        "expected_bytes": 75000,
+        "first_header_word": 6510615555426900570,
+        "header_bytes": 88,
+        "raw_ucx": true,
+        "received_bytes": 9464,
+        "rendezvous": false,
+        "valid": false
+      },
+      "stderr": ""
+    }
+  ],
+  "native_segments": [
+    {
+      "arguments": [
+        "--frames",
+        "100",
+        "--bytes",
+        "75000",
+        "--batch",
+        "16",
+        "--validate-all",
+        "--time-ucx"
+      ],
+      "environment": {
+        "UCX_SYSV_SEG_SIZE": "8256"
+      },
+      "returncode": 0,
+      "elapsed_s": 2.2143263809994096,
+      "result": {
+        "acquire_ns": 39942,
+        "batch": 16,
+        "field_bytes": 40,
+        "frames": 100,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 97721.11,
+        "open_handle_ns": 4399465,
+        "publisher_create_ns": 891188940,
+        "receiver": {
+          "batches": 7,
+          "failure": "",
+          "native_ready_ns": 1047021,
+          "outcome": 1,
+          "payload_bytes": 7500000,
+          "prepare_ns": 810479712,
+          "receive_ns": 9695245,
+          "received": 100,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 7,
+              "host_ns": 13774
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": true,
+        "transfer_ns": 9772111,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 3015
+          },
+          "frame": {
+            "calls": 100,
+            "host_ns": 3359934
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 64533
+          }
+        },
+        "validate_all": true,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "100",
+        "--bytes",
+        "75000",
+        "--batch",
+        "16",
+        "--validate-all",
+        "--time-ucx"
+      ],
+      "environment": {
+        "UCX_SYSV_SEG_SIZE": "32K"
+      },
+      "returncode": 0,
+      "elapsed_s": 2.214767016001133,
+      "result": {
+        "acquire_ns": 39580,
+        "batch": 16,
+        "field_bytes": 40,
+        "frames": 100,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 95999.13,
+        "open_handle_ns": 2884455,
+        "publisher_create_ns": 897097312,
+        "receiver": {
+          "batches": 7,
+          "failure": "",
+          "native_ready_ns": 1071016,
+          "outcome": 1,
+          "payload_bytes": 7500000,
+          "prepare_ns": 814671027,
+          "receive_ns": 9506235,
+          "received": 100,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 7,
+              "host_ns": 29899
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": true,
+        "transfer_ns": 9599913,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 1663
+          },
+          "frame": {
+            "calls": 100,
+            "host_ns": 8309142
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 69973
+          }
+        },
+        "validate_all": true,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "100",
+        "--bytes",
+        "75000",
+        "--batch",
+        "16",
+        "--validate-all",
+        "--time-ucx"
+      ],
+      "environment": {
+        "UCX_SYSV_SEG_SIZE": "256K"
+      },
+      "returncode": 2,
+      "elapsed_s": 2.0720881199995347,
+      "result": {
+        "acquire_ns": 51278,
+        "batch": 16,
+        "field_bytes": 40,
+        "frames": 100,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 68948.1,
+        "open_handle_ns": 2138056,
+        "publisher_create_ns": 814312530,
+        "receiver": {
+          "batches": 0,
+          "failure": "the publisher sent an invalid frame",
+          "native_ready_ns": 995543,
+          "outcome": 2,
+          "payload_bytes": 0,
+          "prepare_ns": 813177744,
+          "receive_ns": 338293,
+          "received": 0,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": false
+        },
+        "time_ucx_calls": true,
+        "transfer_ns": 6894810,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 83,
+            "host_ns": 6638533
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 41339
+          }
+        },
+        "validate_all": true,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "100",
+        "--bytes",
+        "75000",
+        "--batch",
+        "16",
+        "--validate-all",
+        "--time-ucx"
+      ],
+      "environment": {
+        "UCX_SYSV_SEG_SIZE": "1M"
+      },
+      "returncode": 2,
+      "elapsed_s": 2.0756763980007236,
+      "result": {
+        "acquire_ns": 58735,
+        "batch": 16,
+        "field_bytes": 40,
+        "frames": 100,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 87931.59,
+        "open_handle_ns": 3504073,
+        "publisher_create_ns": 811867807,
+        "receiver": {
+          "batches": 0,
+          "failure": "the publisher sent an invalid frame",
+          "native_ready_ns": 927915,
+          "outcome": 2,
+          "payload_bytes": 0,
+          "prepare_ns": 807311306,
+          "receive_ns": 365074,
+          "received": 0,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": false
+        },
+        "time_ucx_calls": true,
+        "transfer_ns": 8793159,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "frame": {
+            "calls": 87,
+            "host_ns": 6843258
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 40848
+          }
+        },
+        "validate_all": true,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--batch",
+        "1",
+        "--time-ucx"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.2480424360001052,
+      "result": {
+        "acquire_ns": 34635656,
+        "batch": 1,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 35330.3104,
+        "open_handle_ns": 3565460,
+        "publisher_create_ns": 808894519,
+        "receiver": {
+          "batches": 5000,
+          "failure": "",
+          "native_ready_ns": 972228,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 809897970,
+          "receive_ns": 176441543,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 3023,
+              "host_ns": 889832
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": true,
+        "transfer_ns": 176651552,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 4919
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 53111209
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 58401
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--batch",
+        "16",
+        "--time-ucx"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.282512748000954,
+      "result": {
+        "acquire_ns": 80479929,
+        "batch": 16,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 42188.0424,
+        "open_handle_ns": 2529910,
+        "publisher_create_ns": 809387373,
+        "receiver": {
+          "batches": 320,
+          "failure": "",
+          "native_ready_ns": 1543956,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 819626053,
+          "receive_ns": 210810826,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 319,
+              "host_ns": 655956
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": true,
+        "transfer_ns": 210940212,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 5400
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 183475718
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 46729
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "--frames",
+        "5000",
+        "--bytes",
+        "75000",
+        "--batch",
+        "128",
+        "--time-ucx"
+      ],
+      "environment": {},
+      "returncode": 0,
+      "elapsed_s": 2.285022908999963,
+      "result": {
+        "acquire_ns": 54102117,
+        "batch": 128,
+        "field_bytes": 40,
+        "frames": 5000,
+        "max_payload_bytes": 75000,
+        "max_wait_us": 10000,
+        "ns_per_frame": 44002.2722,
+        "open_handle_ns": 2823559,
+        "publisher_create_ns": 814374362,
+        "receiver": {
+          "batches": 51,
+          "failure": "",
+          "native_ready_ns": 1046950,
+          "outcome": 1,
+          "payload_bytes": 375000000,
+          "prepare_ns": 812013515,
+          "receive_ns": 219887295,
+          "received": 5000,
+          "transport": "sysv/memory,cuda_ipc/cuda",
+          "ucx_calls": {
+            "credit": {
+              "calls": 51,
+              "host_ns": 421894
+            },
+            "end": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "frame": {
+              "calls": 0,
+              "host_ns": 0
+            },
+            "ready": {
+              "calls": 0,
+              "host_ns": 0
+            }
+          },
+          "valid": true
+        },
+        "time_ucx_calls": true,
+        "transfer_ns": 220011361,
+        "ucx_calls": {
+          "credit": {
+            "calls": 0,
+            "host_ns": 0
+          },
+          "end": {
+            "calls": 1,
+            "host_ns": 4569
+          },
+          "frame": {
+            "calls": 5000,
+            "host_ns": 32294062
+          },
+          "ready": {
+            "calls": 1,
+            "host_ns": 33744
+          }
+        },
+        "validate_all": false,
+        "varying_lengths": false
+      },
+      "stderr": ""
+    }
+  ]
+}

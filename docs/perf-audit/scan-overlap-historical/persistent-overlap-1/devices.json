@@ -1,0 +1,22 @@
+{
+  "source": {
+    "device": "127.0.0.1:50937/example/tomography/source#dbase=no",
+    "pid": 139809,
+    "gpu": null
+  },
+  "decompress": {
+    "device": "127.0.0.1:50125/example/tomography/decompress#dbase=no",
+    "pid": 139810,
+    "gpu": 0
+  },
+  "correct": {
+    "device": "127.0.0.1:55283/example/tomography/correct#dbase=no",
+    "pid": 139811,
+    "gpu": 0
+  },
+  "reconstruct": {
+    "device": "127.0.0.1:52095/example/tomography/reconstruct#dbase=no",
+    "pid": 139812,
+    "gpu": 0
+  }
+}

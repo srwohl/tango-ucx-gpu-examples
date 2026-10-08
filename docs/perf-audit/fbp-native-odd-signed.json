@@ -1,0 +1,367 @@
+{
+  "cupy": "14.2.0",
+  "astra": "2.5.0",
+  "shape": {
+    "columns": 65,
+    "angles": 31
+  },
+  "filter_rows": 32,
+  "pattern": "signed",
+  "irregular_angles": true,
+  "filter_cutoff": null,
+  "results": [
+    {
+      "method": "production",
+      "rows": 1,
+      "filter": "ram-lak",
+      "seconds": [
+        0.0009986280001612613
+      ],
+      "median_seconds": 0.0009986280001612613,
+      "reference_max_abs_error": 2.0489096641540527e-08,
+      "validated": true
+    },
+    {
+      "method": "native_2d",
+      "rows": 1,
+      "filter": "ram-lak",
+      "seconds": [
+        0.0004125340001337463
+      ],
+      "median_seconds": 0.0004125340001337463,
+      "reference_max_abs_error": 2.0489096641540527e-08,
+      "validated": true
+    },
+    {
+      "method": "persistent_2d",
+      "rows": 1,
+      "filter": "ram-lak",
+      "seconds": [
+        0.0003875359998346539
+      ],
+      "median_seconds": 0.0003875359998346539,
+      "reference_max_abs_error": 2.0489096641540527e-08,
+      "validated": true
+    },
+    {
+      "method": "batched_2d",
+      "rows": 1,
+      "filter": "ram-lak",
+      "seconds": [
+        0.0003546939988154918
+      ],
+      "median_seconds": 0.0003546939988154918,
+      "reference_max_abs_error": 2.0489096641540527e-08,
+      "validated": true
+    },
+    {
+      "method": "production",
+      "rows": 1,
+      "filter": "shepp-logan",
+      "seconds": [
+        0.0008005319996300386
+      ],
+      "median_seconds": 0.0008005319996300386,
+      "reference_max_abs_error": 1.4901161193847656e-08,
+      "validated": true
+    },
+    {
+      "method": "native_2d",
+      "rows": 1,
+      "filter": "shepp-logan",
+      "seconds": [
+        0.0004237849989294773
+      ],
+      "median_seconds": 0.0004237849989294773,
+      "reference_max_abs_error": 1.4901161193847656e-08,
+      "validated": true
+    },
+    {
+      "method": "persistent_2d",
+      "rows": 1,
+      "filter": "shepp-logan",
+      "seconds": [
+        0.0004449659991223598
+      ],
+      "median_seconds": 0.0004449659991223598,
+      "reference_max_abs_error": 1.4901161193847656e-08,
+      "validated": true
+    },
+    {
+      "method": "batched_2d",
+      "rows": 1,
+      "filter": "shepp-logan",
+      "seconds": [
+        0.0003815260006376775
+      ],
+      "median_seconds": 0.0003815260006376775,
+      "reference_max_abs_error": 1.4901161193847656e-08,
+      "validated": true
+    },
+    {
+      "method": "production",
+      "rows": 1,
+      "filter": "hann",
+      "seconds": [
+        0.0007807040001353016
+      ],
+      "median_seconds": 0.0007807040001353016,
+      "reference_max_abs_error": 9.313225746154785e-09,
+      "validated": true
+    },
+    {
+      "method": "native_2d",
+      "rows": 1,
+      "filter": "hann",
+      "seconds": [
+        0.00043748099960794207
+      ],
+      "median_seconds": 0.00043748099960794207,
+      "reference_max_abs_error": 9.313225746154785e-09,
+      "validated": true
+    },
+    {
+      "method": "persistent_2d",
+      "rows": 1,
+      "filter": "hann",
+      "seconds": [
+        0.00041558000157237984
+      ],
+      "median_seconds": 0.00041558000157237984,
+      "reference_max_abs_error": 9.313225746154785e-09,
+      "validated": true
+    },
+    {
+      "method": "batched_2d",
+      "rows": 1,
+      "filter": "hann",
+      "seconds": [
+        0.00040157399962481577
+      ],
+      "median_seconds": 0.00040157399962481577,
+      "reference_max_abs_error": 9.313225746154785e-09,
+      "validated": true
+    },
+    {
+      "method": "production",
+      "rows": 1,
+      "filter": "parzen",
+      "seconds": [
+        0.0008073539993347367
+      ],
+      "median_seconds": 0.0008073539993347367,
+      "reference_max_abs_error": 7.450580596923828e-09,
+      "validated": true
+    },
+    {
+      "method": "native_2d",
+      "rows": 1,
+      "filter": "parzen",
+      "seconds": [
+        0.0004028550010843901
+      ],
+      "median_seconds": 0.0004028550010843901,
+      "reference_max_abs_error": 7.450580596923828e-09,
+      "validated": true
+    },
+    {
+      "method": "persistent_2d",
+      "rows": 1,
+      "filter": "parzen",
+      "seconds": [
+        0.00041709200013428926
+      ],
+      "median_seconds": 0.00041709200013428926,
+      "reference_max_abs_error": 7.450580596923828e-09,
+      "validated": true
+    },
+    {
+      "method": "batched_2d",
+      "rows": 1,
+      "filter": "parzen",
+      "seconds": [
+        0.00040735399852565024
+      ],
+      "median_seconds": 0.00040735399852565024,
+      "reference_max_abs_error": 7.450580596923828e-09,
+      "validated": true
+    },
+    {
+      "method": "production",
+      "rows": 8,
+      "filter": "ram-lak",
+      "seconds": [
+        0.0025822179995884653
+      ],
+      "median_seconds": 0.0025822179995884653,
+      "reference_max_abs_error": 2.9802322387695312e-08,
+      "validated": true
+    },
+    {
+      "method": "native_2d",
+      "rows": 8,
+      "filter": "ram-lak",
+      "seconds": [
+        0.0007337039987760363
+      ],
+      "median_seconds": 0.0007337039987760363,
+      "reference_max_abs_error": 2.9802322387695312e-08,
+      "validated": true
+    },
+    {
+      "method": "persistent_2d",
+      "rows": 8,
+      "filter": "ram-lak",
+      "seconds": [
+        0.0005610459993476979
+      ],
+      "median_seconds": 0.0005610459993476979,
+      "reference_max_abs_error": 2.9802322387695312e-08,
+      "validated": true
+    },
+    {
+      "method": "batched_2d",
+      "rows": 8,
+      "filter": "ram-lak",
+      "seconds": [
+        0.0003767159996641567
+      ],
+      "median_seconds": 0.0003767159996641567,
+      "reference_max_abs_error": 2.9802322387695312e-08,
+      "validated": true
+    },
+    {
+      "method": "production",
+      "rows": 8,
+      "filter": "shepp-logan",
+      "seconds": [
+        0.0025868560005619656
+      ],
+      "median_seconds": 0.0025868560005619656,
+      "reference_max_abs_error": 2.2351741790771484e-08,
+      "validated": true
+    },
+    {
+      "method": "native_2d",
+      "rows": 8,
+      "filter": "shepp-logan",
+      "seconds": [
+        0.0007070640003803419
+      ],
+      "median_seconds": 0.0007070640003803419,
+      "reference_max_abs_error": 2.2351741790771484e-08,
+      "validated": true
+    },
+    {
+      "method": "persistent_2d",
+      "rows": 8,
+      "filter": "shepp-logan",
+      "seconds": [
+        0.0005626589991152287
+      ],
+      "median_seconds": 0.0005626589991152287,
+      "reference_max_abs_error": 2.2351741790771484e-08,
+      "validated": true
+    },
+    {
+      "method": "batched_2d",
+      "rows": 8,
+      "filter": "shepp-logan",
+      "seconds": [
+        0.00038986099934845697
+      ],
+      "median_seconds": 0.00038986099934845697,
+      "reference_max_abs_error": 2.2351741790771484e-08,
+      "validated": true
+    },
+    {
+      "method": "production",
+      "rows": 8,
+      "filter": "hann",
+      "seconds": [
+        0.002631500999996206
+      ],
+      "median_seconds": 0.002631500999996206,
+      "reference_max_abs_error": 1.1175870895385742e-08,
+      "validated": true
+    },
+    {
+      "method": "native_2d",
+      "rows": 8,
+      "filter": "hann",
+      "seconds": [
+        0.0006860240009700647
+      ],
+      "median_seconds": 0.0006860240009700647,
+      "reference_max_abs_error": 1.1175870895385742e-08,
+      "validated": true
+    },
+    {
+      "method": "persistent_2d",
+      "rows": 8,
+      "filter": "hann",
+      "seconds": [
+        0.0005159510001249146
+      ],
+      "median_seconds": 0.0005159510001249146,
+      "reference_max_abs_error": 1.1175870895385742e-08,
+      "validated": true
+    },
+    {
+      "method": "batched_2d",
+      "rows": 8,
+      "filter": "hann",
+      "seconds": [
+        0.0003826669999398291
+      ],
+      "median_seconds": 0.0003826669999398291,
+      "reference_max_abs_error": 1.1175870895385742e-08,
+      "validated": true
+    },
+    {
+      "method": "production",
+      "rows": 8,
+      "filter": "parzen",
+      "seconds": [
+        0.0026613780009938637
+      ],
+      "median_seconds": 0.0026613780009938637,
+      "reference_max_abs_error": 9.313225746154785e-09,
+      "validated": true
+    },
+    {
+      "method": "native_2d",
+      "rows": 8,
+      "filter": "parzen",
+      "seconds": [
+        0.0006854530001874082
+      ],
+      "median_seconds": 0.0006854530001874082,
+      "reference_max_abs_error": 9.313225746154785e-09,
+      "validated": true
+    },
+    {
+      "method": "persistent_2d",
+      "rows": 8,
+      "filter": "parzen",
+      "seconds": [
+        0.0005493739990924951
+      ],
+      "median_seconds": 0.0005493739990924951,
+      "reference_max_abs_error": 9.313225746154785e-09,
+      "validated": true
+    },
+    {
+      "method": "batched_2d",
+      "rows": 8,
+      "filter": "parzen",
+      "seconds": [
+        0.0004128840009798296
+      ],
+      "median_seconds": 0.0004128840009798296,
+      "reference_max_abs_error": 9.313225746154785e-09,
+      "validated": true
+    }
+  ],
+  "scope": "GPU-resident filtering plus BP; persistent geometry creation, compilation, upload, and independent host ASTRA FBP_CUDA reference excluded. Native method keeps ASTRA BP kernels and per-slice stream/texture/constants. Batched method uses custom CUDA kernel with ASTRA 2D geometry and hardware texture interpolation."
+}

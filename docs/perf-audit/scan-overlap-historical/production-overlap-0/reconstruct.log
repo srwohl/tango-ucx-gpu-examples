@@ -1,0 +1,1 @@
+{"assembled_scans":10,"assembly_host_ns":240416203,"buffer_wait_ns":2175920628,"buffers":2,"completed_scans":10,"groups":231,"groups_during_reconstruction":206,"owned_sinogram_bytes":188743680,"partial_groups":12,"peak_busy_buffers":2,"peak_ready_scans":1,"ring_wrap_splits":0,"scan_overlap_summary":true}

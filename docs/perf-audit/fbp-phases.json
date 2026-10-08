@@ -1,0 +1,379 @@
+{
+  "shape": {
+    "angles": 360,
+    "columns": 512
+  },
+  "cupy": "14.2.0",
+  "astra": "2.5.0",
+  "results": [
+    {
+      "rows": 1,
+      "filter_rows": 1,
+      "seconds": [
+        0.0022578160005650716,
+        0.005024615998991067,
+        0.0024168710006051697
+      ],
+      "median_seconds": 0.0024168710006051697,
+      "boundaries": {
+        "astra.link": {
+          "calls": 2,
+          "host_ns": 542618
+        },
+        "astra.create": {
+          "calls": 1,
+          "host_ns": 43102
+        },
+        "filter.rfft": {
+          "calls": 1,
+          "host_ns": 91094
+        },
+        "filter.irfft": {
+          "calls": 1,
+          "host_ns": 124058
+        },
+        "astra.run": {
+          "calls": 1,
+          "host_ns": 2398445
+        },
+        "handoff.device_sync": {
+          "calls": 1,
+          "host_ns": 4158
+        },
+        "astra.delete": {
+          "calls": 1,
+          "host_ns": 4659
+        },
+        "instrumented.rows1.filter1": {
+          "calls": 1,
+          "host_ns": 5305382
+        }
+      },
+      "reference_max_abs_error": 3.4458935260772705e-08,
+      "validated": true
+    },
+    {
+      "rows": 1,
+      "filter_rows": 32,
+      "seconds": [
+        0.00548026700016635,
+        0.002084735000607907,
+        0.002036773999861907
+      ],
+      "median_seconds": 0.002084735000607907,
+      "boundaries": {
+        "astra.link": {
+          "calls": 2,
+          "host_ns": 541305
+        },
+        "astra.create": {
+          "calls": 1,
+          "host_ns": 44104
+        },
+        "filter.rfft": {
+          "calls": 1,
+          "host_ns": 114710
+        },
+        "filter.irfft": {
+          "calls": 1,
+          "host_ns": 170947
+        },
+        "astra.run": {
+          "calls": 1,
+          "host_ns": 2259239
+        },
+        "handoff.device_sync": {
+          "calls": 1,
+          "host_ns": 5831
+        },
+        "astra.delete": {
+          "calls": 1,
+          "host_ns": 6573
+        },
+        "instrumented.rows1.filter32": {
+          "calls": 1,
+          "host_ns": 5048301
+        }
+      },
+      "reference_max_abs_error": 3.4458935260772705e-08,
+      "validated": true
+    },
+    {
+      "rows": 8,
+      "filter_rows": 1,
+      "seconds": [
+        0.014202582000507391,
+        0.015476226999453502,
+        0.01567834400157153
+      ],
+      "median_seconds": 0.015476226999453502,
+      "boundaries": {
+        "astra.link": {
+          "calls": 2,
+          "host_ns": 571843
+        },
+        "astra.create": {
+          "calls": 1,
+          "host_ns": 44856
+        },
+        "filter.rfft": {
+          "calls": 8,
+          "host_ns": 704557
+        },
+        "filter.irfft": {
+          "calls": 8,
+          "host_ns": 716581
+        },
+        "astra.run": {
+          "calls": 8,
+          "host_ns": 11645923
+        },
+        "handoff.device_sync": {
+          "calls": 8,
+          "host_ns": 29757
+        },
+        "astra.delete": {
+          "calls": 1,
+          "host_ns": 6522
+        },
+        "instrumented.rows8.filter1": {
+          "calls": 1,
+          "host_ns": 16065925
+        }
+      },
+      "reference_max_abs_error": 3.632158041000366e-08,
+      "validated": true
+    },
+    {
+      "rows": 8,
+      "filter_rows": 32,
+      "seconds": [
+        0.01444390399956319,
+        0.012430204000338563,
+        0.012715579998257454
+      ],
+      "median_seconds": 0.012715579998257454,
+      "boundaries": {
+        "astra.link": {
+          "calls": 2,
+          "host_ns": 618883
+        },
+        "astra.create": {
+          "calls": 1,
+          "host_ns": 48994
+        },
+        "filter.rfft": {
+          "calls": 1,
+          "host_ns": 118657
+        },
+        "filter.irfft": {
+          "calls": 1,
+          "host_ns": 107265
+        },
+        "astra.run": {
+          "calls": 8,
+          "host_ns": 9607668
+        },
+        "handoff.device_sync": {
+          "calls": 8,
+          "host_ns": 29776
+        },
+        "astra.delete": {
+          "calls": 1,
+          "host_ns": 5530
+        },
+        "instrumented.rows8.filter32": {
+          "calls": 1,
+          "host_ns": 12848344
+        }
+      },
+      "reference_max_abs_error": 3.632158041000366e-08,
+      "validated": true
+    },
+    {
+      "rows": 32,
+      "filter_rows": 1,
+      "seconds": [
+        0.048871442000745446,
+        0.04964193500018155,
+        0.05005353200067475
+      ],
+      "median_seconds": 0.04964193500018155,
+      "boundaries": {
+        "astra.link": {
+          "calls": 2,
+          "host_ns": 575180
+        },
+        "astra.create": {
+          "calls": 1,
+          "host_ns": 48804
+        },
+        "filter.rfft": {
+          "calls": 32,
+          "host_ns": 2847454
+        },
+        "filter.irfft": {
+          "calls": 32,
+          "host_ns": 2937963
+        },
+        "astra.run": {
+          "calls": 32,
+          "host_ns": 35726136
+        },
+        "handoff.device_sync": {
+          "calls": 32,
+          "host_ns": 127023
+        },
+        "astra.delete": {
+          "calls": 1,
+          "host_ns": 6703
+        },
+        "instrumented.rows32.filter1": {
+          "calls": 1,
+          "host_ns": 51426887
+        }
+      },
+      "reference_max_abs_error": 3.632158041000366e-08,
+      "validated": true
+    },
+    {
+      "rows": 32,
+      "filter_rows": 32,
+      "seconds": [
+        0.04184732300018368,
+        0.0448931659993832,
+        0.04596806100016693
+      ],
+      "median_seconds": 0.0448931659993832,
+      "boundaries": {
+        "astra.link": {
+          "calls": 2,
+          "host_ns": 611518
+        },
+        "astra.create": {
+          "calls": 1,
+          "host_ns": 52460
+        },
+        "filter.rfft": {
+          "calls": 1,
+          "host_ns": 112475
+        },
+        "filter.irfft": {
+          "calls": 1,
+          "host_ns": 110371
+        },
+        "astra.run": {
+          "calls": 32,
+          "host_ns": 37246998
+        },
+        "handoff.device_sync": {
+          "calls": 32,
+          "host_ns": 119280
+        },
+        "astra.delete": {
+          "calls": 1,
+          "host_ns": 10630
+        },
+        "instrumented.rows32.filter32": {
+          "calls": 1,
+          "host_ns": 44749932
+        }
+      },
+      "reference_max_abs_error": 3.632158041000366e-08,
+      "validated": true
+    },
+    {
+      "rows": 128,
+      "filter_rows": 1,
+      "seconds": [
+        0.20026309800050512,
+        0.20006083999942348,
+        0.1975121779996698
+      ],
+      "median_seconds": 0.20006083999942348,
+      "boundaries": {
+        "astra.link": {
+          "calls": 2,
+          "host_ns": 606168
+        },
+        "astra.create": {
+          "calls": 1,
+          "host_ns": 48733
+        },
+        "filter.rfft": {
+          "calls": 128,
+          "host_ns": 12132613
+        },
+        "filter.irfft": {
+          "calls": 128,
+          "host_ns": 12162587
+        },
+        "astra.run": {
+          "calls": 128,
+          "host_ns": 151481399
+        },
+        "handoff.device_sync": {
+          "calls": 128,
+          "host_ns": 535960
+        },
+        "astra.delete": {
+          "calls": 1,
+          "host_ns": 7214
+        },
+        "instrumented.rows128.filter1": {
+          "calls": 1,
+          "host_ns": 206871140
+        }
+      },
+      "reference_max_abs_error": 3.725290298461914e-08,
+      "validated": true
+    },
+    {
+      "rows": 128,
+      "filter_rows": 32,
+      "seconds": [
+        0.17754047499875014,
+        0.17481496400068863,
+        0.16889859399998386
+      ],
+      "median_seconds": 0.17481496400068863,
+      "boundaries": {
+        "astra.link": {
+          "calls": 2,
+          "host_ns": 683436
+        },
+        "astra.create": {
+          "calls": 1,
+          "host_ns": 77959
+        },
+        "filter.rfft": {
+          "calls": 4,
+          "host_ns": 678978
+        },
+        "filter.irfft": {
+          "calls": 4,
+          "host_ns": 556343
+        },
+        "astra.run": {
+          "calls": 128,
+          "host_ns": 137901792
+        },
+        "handoff.device_sync": {
+          "calls": 128,
+          "host_ns": 645304
+        },
+        "astra.delete": {
+          "calls": 1,
+          "host_ns": 11452
+        },
+        "instrumented.rows128.filter32": {
+          "calls": 1,
+          "host_ns": 169487409
+        }
+      },
+      "reference_max_abs_error": 3.725290298461914e-08,
+      "validated": true
+    }
+  ],
+  "scope": "GPU-resident production FBP only; uploads and reference verification outside timing. Baseline has outer NVTX labels only. Instrumented boundary host times include wrapper overhead and asynchronous submission, not isolated GPU execution; nested ranges must not be summed."
+}

@@ -1,0 +1,428 @@
+{
+  "database": "/home/swohl/repo/tango-hpc/perf-audit/traces/scan-overlap.sqlite",
+  "scoped_kernel_query": "SELECT ranges.text AS phase, ranges.eventId AS range_id, kernel.globalPid AS process_tag, CAST(substr(ranges.text,instr(ranges.text,'scan')+4) AS INTEGER) AS scan_id, kernel.start AS start, kernel.\"end\" AS stop, kernel.streamId AS stream, kernel.contextId AS context, names.value AS name FROM NVTX_EVENTS ranges JOIN CUPTI_ACTIVITY_KIND_RUNTIME runtime ON runtime.globalTid=ranges.globalTid AND runtime.start>=ranges.start AND runtime.\"end\"<=ranges.\"end\" JOIN CUPTI_ACTIVITY_KIND_KERNEL kernel ON kernel.correlationId=runtime.correlationId AND kernel.globalPid=((runtime.globalTid >> 24) << 24) JOIN StringIds names ON names.id=kernel.shortName WHERE ranges.text LIKE 'overlap.%'",
+  "queries": {
+    "phase_host": "SELECT ((globalTid >> 24) << 24) AS process_tag,text AS phase,COUNT(*) AS ranges, SUM(\"end\"-start)/1e6 AS host_ms FROM NVTX_EVENTS WHERE text LIKE 'overlap.%' GROUP BY process_tag,text ORDER BY process_tag,text LIMIT 40",
+    "scoped_kernels": "SELECT process_tag,CASE WHEN phase LIKE 'overlap.assemble.%' THEN 'assembly' ELSE 'reconstruction' END AS operation,name,COUNT(*) AS launches, SUM(stop-start)/1e6 AS gpu_ms FROM scoped GROUP BY process_tag,operation,name ORDER BY process_tag,operation,gpu_ms DESC LIMIT 40",
+    "gpu_overlap": "SELECT assembly.process_tag,COUNT(*) AS overlapping_kernel_pairs, COUNT(DISTINCT assembly.range_id) AS assembly_groups_overlapping_bp, SUM(min(assembly.stop,bp.stop)-max(assembly.start,bp.start))/1e6 AS overlap_ms FROM assembly CROSS JOIN bp ON assembly.process_tag=bp.process_tag AND assembly.context=bp.context AND assembly.stream!=bp.stream AND assembly.start<bp.stop AND bp.start<assembly.stop AND assembly.scan_id=bp.scan_id+1 WHERE assembly.phase LIKE 'overlap.assemble.%' AND bp.phase LIKE 'overlap.reconstruct.%' AND bp.name LIKE '%devBP%' GROUP BY assembly.process_tag ORDER BY assembly.process_tag LIMIT 10",
+    "overlap_examples": "SELECT assembly.process_tag,assembly.phase AS assembly_scan,bp.phase AS reconstruction_scan, assembly.stream AS assembly_stream,bp.stream AS bp_stream, (min(assembly.stop,bp.stop)-max(assembly.start,bp.start))/1e3 AS overlap_us FROM assembly CROSS JOIN bp ON assembly.process_tag=bp.process_tag AND assembly.context=bp.context AND assembly.stream!=bp.stream AND assembly.start<bp.stop AND bp.start<assembly.stop AND assembly.scan_id=bp.scan_id+1 WHERE assembly.phase LIKE 'overlap.assemble.%' AND bp.phase LIKE 'overlap.reconstruct.%' AND bp.name LIKE '%devBP%' ORDER BY assembly.start LIMIT 12",
+    "handoff_apis": "SELECT ((ranges.globalTid >> 24) << 24) AS process_tag,names.value AS api, COUNT(*) AS calls,SUM(runtime.\"end\"-runtime.start)/1e6 AS host_ms FROM NVTX_EVENTS ranges JOIN CUPTI_ACTIVITY_KIND_RUNTIME runtime ON runtime.globalTid=ranges.globalTid AND runtime.start>=ranges.start AND runtime.\"end\"<=ranges.\"end\" JOIN StringIds names ON names.id=runtime.nameId WHERE ranges.text LIKE 'overlap.%' AND (names.value LIKE '%Synchronize%' OR names.value LIKE '%Malloc%' OR names.value LIKE '%Free%' OR names.value LIKE '%MemGetInfo%') GROUP BY process_tag,names.value ORDER BY process_tag,host_ms DESC LIMIT 40",
+    "correlation": "SELECT globalPid AS process_tag,COUNT(*) AS total_kernels, SUM(EXISTS(SELECT 1 FROM runtime_correlations runtime WHERE runtime.correlationId=kernel.correlationId AND runtime.process_tag=kernel.globalPid)) AS runtime_correlated FROM CUPTI_ACTIVITY_KIND_KERNEL kernel WHERE globalPid IN (SELECT DISTINCT process_tag FROM scoped) GROUP BY globalPid LIMIT 10"
+  },
+  "phase_host": [
+    {
+      "process_tag": 283887943024640,
+      "phase": "overlap.assemble.scan1",
+      "ranges": 23,
+      "host_ms": 58.283001
+    },
+    {
+      "process_tag": 283887943024640,
+      "phase": "overlap.assemble.scan2",
+      "ranges": 23,
+      "host_ms": 42.311266
+    },
+    {
+      "process_tag": 283887943024640,
+      "phase": "overlap.assemble.scan3",
+      "ranges": 23,
+      "host_ms": 8.819921
+    },
+    {
+      "process_tag": 283887943024640,
+      "phase": "overlap.assemble.scan4",
+      "ranges": 23,
+      "host_ms": 7.182402
+    },
+    {
+      "process_tag": 283887943024640,
+      "phase": "overlap.reconstruct.scan1",
+      "ranges": 1,
+      "host_ms": 563.177268
+    },
+    {
+      "process_tag": 283887943024640,
+      "phase": "overlap.reconstruct.scan2",
+      "ranges": 1,
+      "host_ms": 208.727071
+    },
+    {
+      "process_tag": 283887943024640,
+      "phase": "overlap.reconstruct.scan3",
+      "ranges": 1,
+      "host_ms": 195.555317
+    },
+    {
+      "process_tag": 283887943024640,
+      "phase": "overlap.reconstruct.scan4",
+      "ranges": 1,
+      "host_ms": 192.076989
+    },
+    {
+      "process_tag": 283894100262912,
+      "phase": "overlap.assemble.scan1",
+      "ranges": 23,
+      "host_ms": 65.378648
+    },
+    {
+      "process_tag": 283894100262912,
+      "phase": "overlap.assemble.scan2",
+      "ranges": 23,
+      "host_ms": 13.698551
+    },
+    {
+      "process_tag": 283894100262912,
+      "phase": "overlap.assemble.scan3",
+      "ranges": 23,
+      "host_ms": 7.27074
+    },
+    {
+      "process_tag": 283894100262912,
+      "phase": "overlap.assemble.scan4",
+      "ranges": 23,
+      "host_ms": 10.247324
+    },
+    {
+      "process_tag": 283894100262912,
+      "phase": "overlap.reconstruct.scan1",
+      "ranges": 1,
+      "host_ms": 248.086368
+    },
+    {
+      "process_tag": 283894100262912,
+      "phase": "overlap.reconstruct.scan2",
+      "ranges": 1,
+      "host_ms": 115.767597
+    },
+    {
+      "process_tag": 283894100262912,
+      "phase": "overlap.reconstruct.scan3",
+      "ranges": 1,
+      "host_ms": 103.064541
+    },
+    {
+      "process_tag": 283894100262912,
+      "phase": "overlap.reconstruct.scan4",
+      "ranges": 1,
+      "host_ms": 99.941676
+    }
+  ],
+  "scoped_kernels": [
+    {
+      "process_tag": 283887943024640,
+      "operation": "assembly",
+      "name": "cupy_copy__float32_float32",
+      "launches": 92,
+      "gpu_ms": 2.418183
+    },
+    {
+      "process_tag": 283887943024640,
+      "operation": "reconstruction",
+      "name": "devBP",
+      "launches": 11776,
+      "gpu_ms": 233.210522
+    },
+    {
+      "process_tag": 283887943024640,
+      "operation": "reconstruction",
+      "name": "cupy_copy__float32_float32",
+      "launches": 524,
+      "gpu_ms": 4.875735
+    },
+    {
+      "process_tag": 283887943024640,
+      "operation": "reconstruction",
+      "name": "cupy_true_divide__float32_floa_2...",
+      "launches": 12,
+      "gpu_ms": 4.234437
+    },
+    {
+      "process_tag": 283887943024640,
+      "operation": "reconstruction",
+      "name": "vector_fft_r2c",
+      "launches": 12,
+      "gpu_ms": 3.997771
+    },
+    {
+      "process_tag": 283887943024640,
+      "operation": "reconstruction",
+      "name": "vector_fft_c2r",
+      "launches": 12,
+      "gpu_ms": 3.951597
+    },
+    {
+      "process_tag": 283887943024640,
+      "operation": "reconstruction",
+      "name": "cupy_multiply__complex64_float_1...",
+      "launches": 12,
+      "gpu_ms": 3.915211
+    },
+    {
+      "process_tag": 283887943024640,
+      "operation": "reconstruction",
+      "name": "cupy_copy__complex64_complex64",
+      "launches": 12,
+      "gpu_ms": 3.899599
+    },
+    {
+      "process_tag": 283894100262912,
+      "operation": "assembly",
+      "name": "cupy_copy__float32_float32",
+      "launches": 92,
+      "gpu_ms": 2.507036
+    },
+    {
+      "process_tag": 283894100262912,
+      "operation": "reconstruction",
+      "name": "devBP",
+      "launches": 11776,
+      "gpu_ms": 244.320351
+    },
+    {
+      "process_tag": 283894100262912,
+      "operation": "reconstruction",
+      "name": "cupy_true_divide__float32_floa_2...",
+      "launches": 12,
+      "gpu_ms": 4.160681
+    },
+    {
+      "process_tag": 283894100262912,
+      "operation": "reconstruction",
+      "name": "vector_fft_c2r",
+      "launches": 12,
+      "gpu_ms": 4.021612
+    },
+    {
+      "process_tag": 283894100262912,
+      "operation": "reconstruction",
+      "name": "vector_fft_r2c",
+      "launches": 12,
+      "gpu_ms": 4.001676
+    },
+    {
+      "process_tag": 283894100262912,
+      "operation": "reconstruction",
+      "name": "cupy_copy__complex64_complex64",
+      "launches": 12,
+      "gpu_ms": 3.937611
+    },
+    {
+      "process_tag": 283894100262912,
+      "operation": "reconstruction",
+      "name": "cupy_multiply__complex64_float_1...",
+      "launches": 12,
+      "gpu_ms": 3.914029
+    },
+    {
+      "process_tag": 283894100262912,
+      "operation": "reconstruction",
+      "name": "cupy_copy__float32_float32",
+      "launches": 12,
+      "gpu_ms": 2.019717
+    }
+  ],
+  "gpu_overlap": [
+    {
+      "process_tag": 283887943024640,
+      "overlapping_kernel_pairs": 10,
+      "assembly_groups_overlapping_bp": 6,
+      "overlap_ms": 0.017535
+    },
+    {
+      "process_tag": 283894100262912,
+      "overlapping_kernel_pairs": 47,
+      "assembly_groups_overlapping_bp": 25,
+      "overlap_ms": 0.096319
+    }
+  ],
+  "overlap_examples": [
+    {
+      "process_tag": 283887943024640,
+      "assembly_scan": "overlap.assemble.scan3",
+      "reconstruction_scan": "overlap.reconstruct.scan2",
+      "assembly_stream": 13,
+      "bp_stream": 146,
+      "overlap_us": 3.04
+    },
+    {
+      "process_tag": 283887943024640,
+      "assembly_scan": "overlap.assemble.scan3",
+      "reconstruction_scan": "overlap.reconstruct.scan2",
+      "assembly_stream": 13,
+      "bp_stream": 146,
+      "overlap_us": 1.024
+    },
+    {
+      "process_tag": 283887943024640,
+      "assembly_scan": "overlap.assemble.scan3",
+      "reconstruction_scan": "overlap.reconstruct.scan2",
+      "assembly_stream": 13,
+      "bp_stream": 146,
+      "overlap_us": 1.12
+    },
+    {
+      "process_tag": 283887943024640,
+      "assembly_scan": "overlap.assemble.scan3",
+      "reconstruction_scan": "overlap.reconstruct.scan2",
+      "assembly_stream": 13,
+      "bp_stream": 147,
+      "overlap_us": 0.8
+    },
+    {
+      "process_tag": 283887943024640,
+      "assembly_scan": "overlap.assemble.scan4",
+      "reconstruction_scan": "overlap.reconstruct.scan3",
+      "assembly_stream": 13,
+      "bp_stream": 275,
+      "overlap_us": 2.911
+    },
+    {
+      "process_tag": 283887943024640,
+      "assembly_scan": "overlap.assemble.scan4",
+      "reconstruction_scan": "overlap.reconstruct.scan3",
+      "assembly_stream": 13,
+      "bp_stream": 275,
+      "overlap_us": 0.928
+    },
+    {
+      "process_tag": 283887943024640,
+      "assembly_scan": "overlap.assemble.scan4",
+      "reconstruction_scan": "overlap.reconstruct.scan3",
+      "assembly_stream": 13,
+      "bp_stream": 275,
+      "overlap_us": 2.752
+    },
+    {
+      "process_tag": 283887943024640,
+      "assembly_scan": "overlap.assemble.scan4",
+      "reconstruction_scan": "overlap.reconstruct.scan3",
+      "assembly_stream": 13,
+      "bp_stream": 275,
+      "overlap_us": 0.896
+    },
+    {
+      "process_tag": 283887943024640,
+      "assembly_scan": "overlap.assemble.scan4",
+      "reconstruction_scan": "overlap.reconstruct.scan3",
+      "assembly_stream": 13,
+      "bp_stream": 276,
+      "overlap_us": 3.168
+    },
+    {
+      "process_tag": 283887943024640,
+      "assembly_scan": "overlap.assemble.scan4",
+      "reconstruction_scan": "overlap.reconstruct.scan3",
+      "assembly_stream": 13,
+      "bp_stream": 276,
+      "overlap_us": 0.896
+    },
+    {
+      "process_tag": 283894100262912,
+      "assembly_scan": "overlap.assemble.scan3",
+      "reconstruction_scan": "overlap.reconstruct.scan2",
+      "assembly_stream": 13,
+      "bp_stream": 19,
+      "overlap_us": 3.296
+    },
+    {
+      "process_tag": 283894100262912,
+      "assembly_scan": "overlap.assemble.scan3",
+      "reconstruction_scan": "overlap.reconstruct.scan2",
+      "assembly_stream": 13,
+      "bp_stream": 19,
+      "overlap_us": 1.056
+    }
+  ],
+  "handoff_apis": [
+    {
+      "process_tag": 283887943024640,
+      "api": "cudaStreamSynchronize_v3020",
+      "calls": 1544,
+      "host_ms": 240.179997
+    },
+    {
+      "process_tag": 283887943024640,
+      "api": "cudaMemGetInfo_v3020",
+      "calls": 4192,
+      "host_ms": 90.668086
+    },
+    {
+      "process_tag": 283887943024640,
+      "api": "cudaMallocPitch_v3020",
+      "calls": 1024,
+      "host_ms": 67.303674
+    },
+    {
+      "process_tag": 283887943024640,
+      "api": "cudaFree_v3020",
+      "calls": 1024,
+      "host_ms": 46.083
+    },
+    {
+      "process_tag": 283887943024640,
+      "api": "cudaDeviceSynchronize_v3020",
+      "calls": 512,
+      "host_ms": 2.147354
+    },
+    {
+      "process_tag": 283887943024640,
+      "api": "cudaMalloc_v3020",
+      "calls": 7,
+      "host_ms": 1.119651
+    },
+    {
+      "process_tag": 283887943024640,
+      "api": "cuMemGetInfo_v2",
+      "calls": 16,
+      "host_ms": 0.414264
+    },
+    {
+      "process_tag": 283887943024640,
+      "api": "cuMemAlloc_v2",
+      "calls": 1,
+      "host_ms": 0.193747
+    },
+    {
+      "process_tag": 283894100262912,
+      "api": "cudaStreamSynchronize_v3020",
+      "calls": 540,
+      "host_ms": 302.55363
+    },
+    {
+      "process_tag": 283894100262912,
+      "api": "cudaMemGetInfo_v3020",
+      "calls": 96,
+      "host_ms": 5.717636
+    },
+    {
+      "process_tag": 283894100262912,
+      "api": "cudaMalloc_v3020",
+      "calls": 6,
+      "host_ms": 1.680582
+    },
+    {
+      "process_tag": 283894100262912,
+      "api": "cuMemGetInfo_v2",
+      "calls": 16,
+      "host_ms": 0.788203
+    },
+    {
+      "process_tag": 283894100262912,
+      "api": "cuMemAlloc_v2",
+      "calls": 1,
+      "host_ms": 0.176885
+    }
+  ],
+  "correlation": [
+    {
+      "process_tag": 283887943024640,
+      "total_kernels": 12452,
+      "runtime_correlated": 12452
+    },
+    {
+      "process_tag": 283894100262912,
+      "total_kernels": 11940,
+      "runtime_correlated": 11940
+    }
+  ]
+}
