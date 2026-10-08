@@ -5,6 +5,9 @@ a compressed detector scan through GPU decompression, correction and selectable 
 An independent subscriber archives the original compressed frames while processing runs.
 The same processes can replay scans continuously and serve a live browser view.
 
+This is a prototype for small detectors. [NEXT.md](NEXT.md) plans the pipeline for 2048 × 2048
+frames at 240 frames/s.
+
 ```mermaid
 flowchart LR
     source[Compressed source device] -->|opaque LZ4 frames| decompress[GPU decompression device]
