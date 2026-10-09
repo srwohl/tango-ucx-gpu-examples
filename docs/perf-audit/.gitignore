@@ -10,3 +10,6 @@ traces/
 # Built from the probes' sources.
 *.so
 probes/transport_native
+# Run summaries, device reports and probe results. The probes write them.
+*.json
+*.jsonl
