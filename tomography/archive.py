@@ -27,8 +27,8 @@ def main():
                          batch=1, label="compressed-archive")
     try:
         meta = json.loads(sub.description["application_text"])
-        if meta["role"] != "source" or meta["codec"] != "lz4-raw":
-            raise ValueError("archive expects the original compressed detector stream")
+        if meta["role"] != "source" or meta["codec"] not in ("lz4-raw", "raw"):
+            raise ValueError("archive expects the original detector stream")
         (args.output / "description.json").write_text(json.dumps(sub.description, indent=2))
         with ExitStack() as cleanup:
             data = cleanup.enter_context((args.output / "payloads.bin").open("xb"))

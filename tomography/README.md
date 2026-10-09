@@ -2,6 +2,16 @@
 
 Four or more ordinary Tango device server processes use the installed tango-ucx package to move
 a compressed detector scan through GPU decompression, correction and selectable reconstruction.
+
+Saving and GPU decompression can each be enabled or disabled in the live pipeline
+controls, taking effect after the current scan finishes and the pipeline restarts.
+Both default to enabled. CLI flags `--no-saving` and `--no-decompression` disable
+them; `--saving` and `--decompression` enable them again. With saving disabled,
+the detector archive, `volume.npy` and `reconstruction.png` are skipped; scan
+preparation files, logs and status summaries remain available. Volumes are still
+consumed for verification and live viewing. With decompression disabled, the
+source sends raw uint16 or float32 detector frames directly to correction and
+no decompression device is launched. Saving can still archive that raw stream.
 An independent subscriber archives the original compressed frames while processing runs.
 The same processes can replay scans continuously and serve a live browser view.
 
@@ -44,6 +54,21 @@ The default scan has 96 projections and reconstructs an 8 × 64 × 64 volume wit
 waits for the archive subscriber, starts downstream first and waits for end of stream.
 It writes `volume.npy`, `reconstruction.png`, `summary.json`, server logs and an `archive/`
 directory containing `payloads.bin`, `records.jsonl` and the stream description.
+
+Synthetic playback now includes an ellipsoid that smoothly dims to 20% density and
+brightens again over 40 tomograms. Use `--phantom-period 80` for a slower cycle or
+`--phantom-period 0` for the original static phantom. HDF5 playback is unchanged.
+The density stays constant throughout each tomogram, so every reconstructed volume
+represents a consistent object. Run `pixi run tomography-live` to see it pulse.
+
+Two projection bases are computed once on the GPU and stored in memory-mapped files.
+Playback combines them, converts to detector counts and compresses one frame at a
+time; it does not store a sequence of scans or reproject a volume per tomogram.
+Additional playback scratch memory scales with detector frame size, and basis disk
+space scales with one scan, regardless of playback length or brightness period.
+Generation and LZ4 compression run on the source CPU; large frames can limit source
+throughput. Archive checks and volume references follow the changing density;
+`--no-verify-volumes` skips the extra reference reconstruction per tomogram.
 
 ### Select GPU placement and transport
 
@@ -261,8 +286,8 @@ rings, source slots, calibration maps and sinogram allocations. They send End on
 acquisition stops, so no subscriptions or server processes restart between scans.
 
 The live view renders a rotatable 3D volume with a time slider, play/pause, playback
-speed, a loop toggle and a Follow live button. Drag to rotate, scroll to zoom, and use
-opacity, threshold and depth cut controls to explore the volume. Arrow keys rotate a
+speed, a loop toggle and a Follow live button. Drag to rotate, Shift-drag to pan,
+scroll to zoom inside, and use opacity, threshold and axis clipping to explore the volume. Arrow keys rotate a
 focused canvas; plus and minus zoom. Stage progress and archive counts remain visible.
 The default 3D **Appearance → Interior** makes the bright shell and its two-voxel
 neighborhood faint, shows the bulk tissue in translucent blue, and highlights higher
@@ -270,8 +295,20 @@ interior intensities in orange. Color and opacity are assigned to each voxel bef
 interpolation so shell edges do not become false features. The preset is tuned to
 this demo's 0.002 tissue, 0.003–0.004 features and 0.01 shell; color represents
 intensity, not a segmentation. It can suppress structures adjacent to the shell.
-Choose **Full density** for the original intensity rendering, or use **Depth cut**
-to remove the front of the volume. Appearance controls change only the display.
+Choose **Full density** for the original intensity rendering. Enable **Clip**, select
+X, Y or Z, choose which side to keep, and move **Clip position** to expose the interior.
+Appearance controls change only the display.
+The default **View → Linked slices + 3D** shows XY, XZ and YZ slices from the same
+buffered scan. Click a slice to move the shared crosshair, or move any slice slider.
+The selected point appears in 3D; **Focus selected point** moves the camera's orbit
+centre there, and **Clip at selected point** places the selected clipping plane there.
+Slice window low/high controls apply contrast after 16-bit quantization. The intensity
+readout is approximate and reflects the bounded display range, not the original float data.
+Enter effective reconstructed voxel spacing for X, Y and Z and choose µm or mm to
+preserve physical proportions in 3D and slices. Coordinates use the first voxel centre
+as zero. Spacing is a manual viewer calibration; it is not inferred from detector pixels
+or written to saved volumes. The default **Uncalibrated voxels** uses unit spacing.
+Reset view restores camera, crosshair, clipping and contrast while retaining calibration.
 Choose **View → Slice** to inspect the interior without the outer shell obscuring it.
 Select an axial (Z), coronal (Y) or sagittal (X) plane and move the slice slider.
 Slice contrast defaults to **Interior (0–0.004)** to reveal the faint Shepp–Logan
@@ -285,7 +322,10 @@ The renderer prefers WebGPU and falls back to WebGL 2 if the API, adapter or dev
 is unavailable. It also restores the selected buffered scan through WebGL 2 after a
 WebGPU device loss. The active backend appears beside the volume dimensions. Both
 backends use the same display window, ray marching and camera controls. WebGPU reuses
-one `r8unorm` 3D texture for scans with equal dimensions. WebGPU requires a secure
+one `rg8unorm` 3D texture for scans with equal dimensions. Both backends store the
+low and high bytes of each unsigned 16-bit value in two channels and decode them
+when sampling, allowing linear filtering without an optional 16-bit texture extension.
+WebGPU requires a secure
 context; the viewer's `http://127.0.0.1` address qualifies. See the
 [WebGPU API](https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API) and
 [secure context documentation](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts).
@@ -294,13 +334,21 @@ Its own `latest` subscription keeps a rolling display history capped at **32 vol
 and 64 MiB**, evicting oldest scans when either limit is reached. Set
 `--view-history-volumes N` and `--view-history-mib N` on the launcher to change these
 limits. A single display volume must fit the byte limit. The browser caches at most
-8 volumes / 32 MiB and holds one volume texture on the GPU. Display voxels use the same
-fixed 0–0.01 window as before, quantized to uint8; scientific output stays float32.
+8 volumes / 32 MiB and holds one volume texture on the GPU. Linked slices use the
+current browser buffer; if the current volume exceeds the cache
+budget, that one buffer is retained separately until another scan is displayed.
+Display voxels use the same
+fixed 0–0.01 window as before (or `--display-max`), quantized to unsigned 16-bit
+integers; scientific output stays float32. Values outside that range are clipped
+only in the display copy. Display storage and transfer use two bytes per voxel,
+so the same history byte budget retains fewer scans than the previous 8-bit display.
 `/api/status` lists buffered versions and `/api/volume?v=VERSION` serves C-order z/y/x
-display bytes with shape and version headers. An expired version returns HTTP 410.
-The `/api/slice` endpoint also accepts a version and a `window_max` in (0, 0.01]
-(default 0.01). Slice images use the buffered display voxels and keep their original
-voxel proportions; they do not retain another full volume in the browser.
+little-endian display bytes with shape and version headers and format `uint16-le-zyx`.
+An expired version returns HTTP 410. The `/api/slice` endpoint also accepts a version,
+`window_min` and `window_max`, with `0 <= window_min < window_max <= display_max`.
+Defaults are zero and the configured display maximum. HTTP slice PNGs are 8-bit
+screen images derived from the 16-bit buffered data after contrast adjustment;
+linked browser slices read the current 16-bit volume directly.
 
 A slow viewer can bypass volumes without applying pressure to the reconstruction
 device. The volume writer and compressed archive
@@ -350,6 +398,63 @@ SIRT ignores this filter setting. `--iterations` applies only to SIRT.
 The dashboard and each run's `workload.reconstruction` report the method, backend
 and applicable settings. The scan description also records this configuration.
 
+### TomocuPy methods
+
+Three further methods come from [TomocuPy](https://github.com/tomography/tomocupy)
+(Argonne National Laboratory). They backproject a block of slices in a few kernel
+launches, where `fbp` makes one ASTRA call per slice, so the GPU is not left waiting
+for the host. Build them once; they are optional and the other methods run without them:
+
+```sh
+pixi run build-tomocupy
+pixi run tomography-live --gpu-stress --algorithm lprec --update-projections 48
+```
+
+| Method | Processing | Restrictions |
+| --- | --- | --- |
+| `lprec` | Log-polar Fourier backprojection | Equally spaced angles over [0, 180) degrees |
+| `fourierrec` | Fourier gridding (USFFT), two slices per transform | Even detector width |
+| `linerec` | Direct backprojection with linear interpolation | None |
+
+All three need at least 32 detector columns, write whole volumes or blocks (not
+`--output-mode slices`) and work with sliding-window updates, host-retained sinograms
+and several reconstructors. Volumes come out in the same orientation, grid and scale as
+the other methods: the half-pixel grid offset, the row order and the 4 / pi scale of
+TomocuPy are folded into its filter weights.
+
+Their knobs are `--recon-filter` (the four above plus TomocuPy's `hamming`, `cosine` and
+`cosine2`), `--center`, `--recon-dtype float32|float16` and `--slices-per-block`.
+`float16` works in half precision, which halves this module's scratch at power-of-two
+widths; `fourierrec` and `lprec` then need a power-of-two detector width. TomocuPy's `none` filter, laminography angle,
+stripe removal and phase retrieval are not exposed.
+
+What to expect, measured on one RTX 2060 SUPER at 256 slices, 720 projections,
+256 columns with an update every 48 projections (`docs/perf-audit/GPU-SATURATION-FOLLOWUP.md`):
+
+| Method | Volumes/s | Against `fbp` |
+| --- | ---: | ---: |
+| `fbp` | 4.17 | 1.00x |
+| `lprec` | 8.79 | 2.11x |
+| `linerec` | 4.59 | 1.10x |
+| `fourierrec` | 4.23 | 1.01x |
+
+- The volumes differ from `fbp` by 1.4 to 2.7% (relative L2 inside the reconstruction
+  circle at 256 columns and 360 angles). Against the analytic phantom their error is
+  0.057 to 0.058 where `fbp` has 0.055.
+  `linerec` with an odd detector width matches `fbp` to 0.01%.
+- `fourierrec` and `lprec` leave the corners outside the inscribed circle at zero.
+- `fourierrec` transforms slices in pairs, and each slice takes about 0.2% of its partner
+  at 256 columns (0.7% at 64, 0.1% at 512). Its volume therefore changes slightly with
+  `--slices-per-block`.
+- Verification compares against the same backend run on host-corrected input, since
+  TomocuPy has no host implementation: it checks the data path, not the method.
+  Half precision `fourierrec` repeats itself only to about 0.2% of the peak, so
+  `float16` runs are verified to 0.5% of the peak.
+- `build_tomocupy.sh` compiles for the GPU `nvidia-smi` reports. Set
+  `TOMOCUPY_CUDA_ARCH=sm_NN` for another one, and `TOMOCUPY_BUILD` to use a build elsewhere.
+- Each engine owns filter scratch bounded like FBP's (`gpu_backend_scratch_bytes` in the
+  memory plan); TomocuPy's own plans and grids come on top and are not in the plan.
+
 ### Tune reconstruction
 
 Launch flags set the initial reconstruction. In the live viewer, use **Reconstruction
@@ -373,7 +478,8 @@ skips intermediate volumes. Once acquisition finishes, the controls are disabled
 | `--min-constraint VALUE` | SIRT | Lower bound after each update; 0. Use `none` to allow negative values |
 | `--max-constraint VALUE` | SIRT | Upper bound after each update; `none` |
 | `--filter-cutoff VALUE` | FBP with Hann / Shepp–Logan | ASTRA `FilterD`, in (0, 1]; backend default 1 |
-| `--center VALUE` | GridRec | Rotation axis in original detector pixel coordinates; columns / 2. Fractional values supported |
+| `--center VALUE` | GridRec, TomocuPy | Rotation axis in original detector pixel coordinates; columns / 2. Fractional values supported |
+| `--recon-dtype NAME` | TomocuPy | Working precision, `float32` or `float16`; `float32` |
 | `--gaussian-fwhm VALUE` | All | Isotropic 3D Gaussian width in voxels; 0 disables smoothing |
 | `--scale-factor VALUE` | All | Positive multiplier after smoothing; 1 |
 | `--recon-threads N` | GridRec | CPU threads; 4 |
@@ -607,6 +713,83 @@ The full-resolution 1024³ float32 output exceeds the transport's 2 GiB per-fram
 Use `--output-mode blocks` with a positive block depth and sufficient host assembly
 budgets to publish it in slices, regardless of the selected reconstruction method.
 
+### Sliding-window updates and streamed slices
+
+By default the reconstruction device publishes once per scan. `--update-projections N`
+makes it publish every `N` projections from the latest full rotation, so a result mixes the
+start of the current scan with the end of the one before. This is the incremental scheme of
+CT fluoroscopy. The sinogram is a ring: each projection replaces the one at its angle. The
+first scan fills the ring and publishes once; every later scan publishes `angles / N` times,
+and its last publication holds exactly that scan. `N` must divide the projections per
+volume.
+
+`--output-mode` selects what an update carries:
+
+| Output | Published every update | Reconstruction |
+|---|---|---|
+| `volume` (default) | The full volume | The selected algorithm, recomputed on the ring |
+| `slices` | Three arbitrary slices, `3 × S × S` float32 with `S = max(rows, columns)` | FBP only; see below |
+
+```sh
+pixi run tomography --algorithm fbp --update-projections 16 --scans 3
+pixi run tomography-live --output-mode slices --update-projections 16
+```
+
+Slice output follows [RECAST3D](https://ir.cwi.nl/pub/27711) and
+[TomoStream](https://pmc.ncbi.nlm.nih.gov/articles/PMC9070713/): each corrected projection
+is filtered when it arrives and stored in the ring, and only the requested planes are
+backprojected, by a CuPy kernel in `streaming.py`. No volume is reconstructed: an update
+backprojects three images, whatever the depth of the volume. The filter is the one
+`fbp` uses, and the planes agree with ASTRA's FBP volume to about 0.1% of its peak; the
+two interpolate differently. Reconstruction settings still report the `astra-cuda` backend.
+
+A plane is an origin and two steps in `(z, y, x)` volume indices: pixel `(i, j)` of its
+image samples the volume at `origin + i·u + j·v`. Points outside the volume are zero, so a
+plane can be moved, tilted and zoomed freely. The defaults are the axial, coronal and
+sagittal planes through the centre, placed on whole voxels. Set others at launch, or move
+them while the pipeline runs:
+
+```sh
+pixi run tomography --output-mode slices --slice-planes '[
+  {"origin": [4, 0, 0], "u": [0, 1, 0], "v": [0, 0, 1]},
+  {"origin": [-20, 40, -3], "u": [0.9, 0.25, 0.1], "v": [0, -0.2, 1.1]},
+  {"origin": [-28, 0, 20], "u": [1, 0, 0], "v": [0, 1, 0]}]'
+```
+
+```python
+proxy.command_inout("ConfigureSlices", json.dumps(planes))
+```
+
+`ConfigureSlices` takes the same three planes and returns the `GetReconstruction` state,
+which reports them under `slices` with a revision, the image size and the volume shape.
+The next update uses the new planes; nothing is recomputed in between, so choose a small
+`N` for a responsive view. Every publication carries the planes it was made with in its
+record, beside the scan identity and the last projection of its window. In the live viewer,
+`POST /api/slices` forwards planes to the device, and the **Streamed slices** panel shows
+the three images with controls for orientation, position, tilt and zoom. Planes moved there
+survive a pipeline restart that keeps the volume dimensions.
+
+The demo checks every update, not only those that end a scan. Its reference is built from
+the same window of two scans: an independent reconstruction for volumes, and a NumPy
+backprojection of the same planes for slices. Only updates that end a scan are counted as
+completed scans and saved (`volume.npy`, or `slices.npy`); the others are reported as
+`intermediate_updates` in the summary.
+
+Limits of this mode:
+
+- Both options use one reconstruction device in one chain, with the sinogram on the GPU,
+  and do not combine with block output.
+- Slice output needs FBP without Gaussian smoothing, which would need the volume. The
+  scale factor applies.
+- A new filter applies to projections as they arrive. Within the first scan after a filter
+  change, slice updates mix both filters; the demo does not compare those with a reference.
+- A full volume every `N` projections is `angles / N` times the output traffic of one per
+  scan, and the writer receives every publication, so a slow writer holds the pipeline.
+- The source replays angles in order. A window is always one full rotation, but its two
+  scans meet at a moving angle; interlaced or golden-angle acquisition is not implemented.
+- The reported `reconstruct_ns` covers the backprojection of each update, not the filtering
+  of each projection.
+
 ## Larger streaming workload
 
 ```sh
@@ -810,6 +993,8 @@ covered by that local TCP run. The streaming check also covers several scans in 
 processes, HTTP slice images, a slow latest viewer and complete archival after Ctrl-C.
 Run `python -m unittest test_viewer.py` from this directory for CPU-only checks of
 bounded history, immutable version selection, reconstruction controls and the HTTP volume API.
+Run `node test_live_controls.cjs` for CPU-only checks that geometry and algorithm
+selections survive pipeline restarts, stale status polls and unapplied edits.
 The optional `test_volume_browser.cjs` checks that known inner objects remain
 visible through a bright shell at two resolutions, that interpolation does not
 invent features in a uniform interior, and that appearance survives WebGPU device
@@ -822,6 +1007,9 @@ executable when needed. The interior preset uses additional GPU texture samples;
 Run `python -m unittest test_reconstruction.py` for CPU GridRec checks against exact
 projections of asymmetric disks, including absolute scale, orientation, filters and
 odd detector widths. Set `TOMOGRAPHY_TEST_GPU=1` to include GPU FBP and SIRT checks.
+`python -m unittest test_tomocupy.py` checks the TomocuPy settings, restrictions and chunking
+on the CPU; with `TOMOGRAPHY_TEST_GPU=1` and the modules built it also compares each method
+with ASTRA FBP for orientation, scale, an off-centre axis, a short last block and half precision.
 CPU tests also check live JSON validation, backend switching and SIRT scratch reuse
 with CPU stand-ins, rejection of accidental host inputs and incompatible GPU array
 metadata. Block tests compare GridRec with whole-volume reconstruction, including
@@ -845,6 +1033,14 @@ These
 Python checks do not instrument transfers inside ASTRA or UCX; proving the absence of
 host payload transfers on a particular deployment requires a CUDA/UCX trace on that
 deployment.
+Run `python -m unittest test_streaming.py` for the update rule, plane validation and the
+host slice reference: its planes are compared with a volume built slice by slice, with exact
+disk projections, and across detector rows. `TOMOGRAPHY_TEST_GPU=1` adds the slice kernel
+against that reference and against ASTRA's FBP volume, and the real worker over three scans
+in both output modes, including a filter change. `node test_slice_stream.cjs` checks that
+the viewer's plane controls produce the device's default planes. The pipeline tests
+`tomography_updates_gpu_tcp` and `tomography_slices_gpu_tcp` run both modes end to end with
+a phantom that changes quickly between scans.
 Run `python -m unittest test_demo.py` for CPU-only checks of transport profiles,
 inherited interface selection, GPU placement, host/pinned budget validation and the
 GPU-over-TCP fallback policy.

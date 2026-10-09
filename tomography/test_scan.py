@@ -10,9 +10,88 @@ import h5py
 import lz4.block
 import numpy as np
 
-from demo import parse_args, reconstruction_options, streaming_rates, workload_description
+from demo import parse_args, reconstruction_options, streaming_rates, verify_archive, workload_description
 from pipeline_control import link_budget
-from scan import from_hdf5, hdf5_dimensions, selection
+from scan import DynamicPhantom, _write_scan, from_hdf5, hdf5_dimensions, orb_mask, orb_scale, selection, uncompressed_scan
+
+
+class DynamicPhantomTests(unittest.TestCase):
+    def test_raw_detector_scan_and_dynamic_payloads(self):
+        scan = uncompressed_scan(self.directory, self.scan)
+        self.assertEqual(scan["codec"], "raw")
+        self.assertEqual([frame["bytes"] for frame in scan["frames"]], [48] * 6)
+        frames = np.fromfile(self.directory / "raw.bin", np.uint16).reshape(6, 3, 8)
+        np.testing.assert_array_equal(frames[0], self.dark)
+        np.testing.assert_array_equal(frames[1], self.flat)
+        for projection in range(4):
+            np.testing.assert_array_equal(frames[projection + 2], self.dynamic.frame(0, projection))
+            np.testing.assert_array_equal(np.frombuffer(self.dynamic.raw(4, projection), np.uint16).reshape(3, 8),
+                                          self.dynamic.frame(4, projection))
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.directory = self.root / "scan"
+        self.directory.mkdir()
+        self.dark = np.full((3, 8), 16, np.uint16)
+        self.flat = np.full((3, 8), 4016, np.uint16)
+        self.base = np.full((4, 3, 8), .1, np.float32)
+        self.orb = np.zeros_like(self.base)
+        self.orb[:, 1, 3:5] = .4
+        np.save(self.directory / "attenuation.npy", self.base)
+        np.save(self.directory / "orb.npy", self.orb)
+        raw = np.rint(self.dark + 4000 * np.exp(-self.base - self.orb)).astype(np.uint16)
+        self.scan = _write_scan(self.directory, np.arange(4, dtype=np.float32),
+                                self.dark, self.flat, raw, dict(type="phantom", orb_period=8))
+        self.dynamic = DynamicPhantom(self.directory, self.scan)
+
+    def test_local_brightness_changes_and_cycle_wraps(self):
+        bright = self.dynamic.frame(0, 0)
+        dim = self.dynamic.frame(4, 0)
+        np.testing.assert_array_equal(bright[self.orb[0] == 0], dim[self.orb[0] == 0])
+        self.assertTrue(np.all(bright[self.orb[0] > 0] < dim[self.orb[0] > 0]))
+        np.testing.assert_array_equal(bright, self.dynamic.frame(8000, 0))
+        self.assertIsInstance(self.dynamic.base, np.memmap)
+        self.assertIsInstance(self.dynamic.orb, np.memmap)
+        for cycle in range(8):
+            decoded = np.frombuffer(lz4.block.decompress(self.dynamic.compressed(cycle, 0),
+                                                       uncompressed_size=48), np.uint16).reshape(3, 8)
+            np.testing.assert_array_equal(decoded, self.dynamic.frame(cycle, 0))
+            expected = -np.log((self.dynamic.frame(cycle, 0).astype(np.float64) - 16) / 4000)
+            np.testing.assert_array_equal(self.dynamic.sinogram(cycle)[:, 0], expected.astype(np.float32))
+
+    def test_archive_verifies_changing_payload_lengths_and_detects_corruption(self):
+        archive = self.root / "archive"
+        archive.mkdir()
+        original = (self.directory / "compressed.bin").read_bytes()
+        position = offset = 0
+        with (archive / "payloads.bin").open("wb") as payloads, (archive / "records.jsonl").open("w") as records:
+            for cycle in range(9):
+                for entry in self.scan["frames"]:
+                    payload = (self.dynamic.compressed(cycle, entry["projection"]) if entry["kind"] == 2
+                               else original[entry["offset"]:entry["offset"] + entry["bytes"]])
+                    record = dict(entry, index=position, offset=offset, bytes=len(payload),
+                                  scan_id=cycle + 1, calibration_id=cycle + 1)
+                    records.write(json.dumps(record) + "\n")
+                    payloads.write(payload)
+                    position += 1
+                    offset += len(payload)
+        self.assertEqual(verify_archive(self.root, self.scan, 9), 54)
+        with (archive / "payloads.bin").open("r+b") as payloads:
+            payloads.write(b"broken")
+        with self.assertRaisesRegex(ValueError, "archive differs"):
+            verify_archive(self.root, self.scan, 9)
+
+    def test_period_options_and_volume_mask(self):
+        self.assertEqual(parse_args([]).phantom_period, 40)
+        self.assertEqual(parse_args(["--phantom-period", "0"]).phantom_period, 0)
+        for period in ("-1", "1", "2"):
+            with redirect_stderr(StringIO()), self.assertRaises(SystemExit):
+                parse_args(["--phantom-period", period])
+        self.assertEqual(orb_mask(64, 8).shape, (8, 64, 64))
+        self.assertTrue(orb_mask(64, 8).any())
+        self.assertAlmostEqual(float(orb_scale(4, 8)), .2)
 
 
 class HDF5ScanTests(unittest.TestCase):

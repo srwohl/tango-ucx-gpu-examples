@@ -21,12 +21,31 @@ HEALTH = dict(skipped=0, transport="tcp")
 
 
 class HistoryTests(unittest.TestCase):
+    def test_sixteen_bit_display_preserves_sub_eight_bit_detail(self):
+        source = np.array([[[.005, .005001, .005002]]], dtype=np.float32)
+        original = source.copy()
+        history = VolumeHistory()
+        history.append(source, 1, 0, HEALTH)
+        voxels, meta = history.get(1)
+        self.assertEqual(voxels.dtype, np.dtype('<u2'))
+        self.assertEqual(len(np.unique(voxels)), 3)
+        self.assertEqual(meta["bytes"], source.size * 2)
+        np.testing.assert_array_equal(source, original)
+
+    def test_oversized_uint16_volume_does_not_evict_buffered_data(self):
+        history = VolumeHistory(max_bytes=12)
+        history.append(np.zeros((1, 2, 3)), 1, 0, HEALTH)
+        with self.assertRaisesRegex(ValueError, "byte limit"):
+            history.append(np.zeros((1, 2, 4)), 2, 1, HEALTH)
+        self.assertEqual(history.snapshot()["version"], 1)
+        self.assertIsNotNone(history.get(1))
+
     def test_custom_display_range_preserves_real_data_contrast(self):
         source = np.array([[[0, .02, .04, .08]]], dtype=np.float32)
         original = source.copy()
         history = VolumeHistory(display_max=.04)
         history.append(source, 1, 0, HEALTH)
-        np.testing.assert_array_equal(history.get(1)[0], [[[0, 127, 255, 255]]])
+        np.testing.assert_array_equal(history.get(1)[0], [[[0, 32767, 65535, 65535]]])
         np.testing.assert_array_equal(source, original)
         self.assertEqual(history.snapshot()["display_max"], .04)
         for maximum in (0, -1, np.nan, np.inf):
@@ -53,22 +72,38 @@ class HistoryTests(unittest.TestCase):
         state = history.snapshot()
         self.assertEqual([f["scan_id"] for f in state["volumes"]], [102, 105])
         self.assertEqual(state["skipped"], 3)
-        self.assertEqual(state["buffered_bytes"], 48)
+        self.assertEqual(state["buffered_bytes"], 96)
         self.assertIsNone(history.get(1))
-        self.assertTrue(np.all(original == 127))
+        self.assertTrue(np.all(original == 32767))
         self.assertFalse(original.flags.writeable)
         self.assertEqual(history.get(2)[1]["scan_id"], 102)
         self.assertGreaterEqual(state["volumes"][1]["time_seconds"], state["volumes"][0]["time_seconds"])
 
     def test_byte_bound_with_changing_shapes(self):
-        history = VolumeHistory(max_volumes=10, max_bytes=40)
+        history = VolumeHistory(max_volumes=10, max_bytes=80)
         for i, shape in enumerate([(2, 3, 4), (2, 2, 4), (1, 3, 4)]):
             history.append(np.zeros(shape), i, i, HEALTH)
-        self.assertEqual(history.snapshot()["buffered_bytes"], 28)
+        self.assertEqual(history.snapshot()["buffered_bytes"], 56)
         self.assertEqual(history.snapshot()["buffered_volumes"], 2)
         with self.assertRaisesRegex(ValueError, "byte limit"):
             history.append(np.zeros((2, 5, 5)), 3, 3, HEALTH)
         self.assertEqual(history.snapshot()["received_volumes"], 3)
+
+    def test_updates_within_a_scan_advance_by_projection_and_keep_their_planes(self):
+        history = VolumeHistory()
+        planes = [dict(origin=[0, 0, 0], u=[0, 1, 0], v=[0, 0, 1])] * 3
+        history.append(np.zeros((3, 4, 4)), 5, 0, HEALTH, projection=95, planes=planes)
+        history.append(np.zeros((3, 4, 4)), 6, 1, HEALTH, projection=15, planes=planes)
+        history.append(np.zeros((3, 4, 4)), 6, 3, HEALTH, projection=47)
+        for scan, projection in ((6, 47), (6, 31), (5, 95)):
+            with self.subTest(scan=scan, projection=projection), self.assertRaises(ValueError):
+                history.append(np.zeros((3, 4, 4)), scan, 4, HEALTH, projection=projection)
+        state = history.snapshot()
+        self.assertEqual((state["scan_id"], state["projection"], state["received_volumes"], state["skipped"]),
+                         (6, 47, 3, 1))
+        self.assertEqual([(frame["scan_id"], frame["projection"], frame.get("planes")) for frame in state["volumes"]],
+                         [(5, 95, planes), (6, 15, planes), (6, 47, None)])
+        history.append(np.zeros((3, 4, 4)), 7, 4, HEALTH, projection=15)
 
     def test_invalid_volume_or_repeated_scan_does_not_replace_history(self):
         history = VolumeHistory()
@@ -108,13 +143,13 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(response.headers["X-Volume-Shape"], "2,3,4")
             self.assertEqual(response.headers["X-Volume-Version"], "1")
             self.assertEqual(response.headers["X-Scan-Id"], "40")
-            self.assertEqual(response.headers["X-Volume-Format"], "uint8-zyx")
+            self.assertEqual(response.headers["X-Volume-Format"], "uint16-le-zyx")
             self.assertEqual(response.read(), display_voxels(source).tobytes())
         for axis in range(3):
             with self.get(f"/api/slice?v=1&axis={axis}&index=0") as response:
                 with Image.open(BytesIO(response.read())) as image:
                     np.testing.assert_array_equal(np.asarray(image),
-                        np.take(display_voxels(source), 0, axis=axis))
+                        (np.take(display_voxels(source), 0, axis=axis).astype(float) / 257).astype(np.uint8))
         with self.get("/api/status") as response:
             state = json.load(response)["viewer"]
             self.assertEqual([f["version"] for f in state["volumes"]], [1, 2])
@@ -129,10 +164,10 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(response.read(), display_voxels(source, .04).tobytes())
         with self.get("/api/slice?axis=0&index=0") as response:
             with Image.open(BytesIO(response.read())) as image:
-                np.testing.assert_array_equal(np.asarray(image), display_voxels(source, .04)[0])
+                np.testing.assert_array_equal(np.asarray(image), (display_voxels(source, .04)[0].astype(float) / 257).astype(np.uint8))
         with self.get("/api/slice?axis=0&index=0&window_max=0.02") as response:
             with Image.open(BytesIO(response.read())) as image:
-                expected = np.clip(display_voxels(source, .04)[0].astype(float) * 2, 0, 255).astype(np.uint8)
+                expected = np.clip(display_voxels(source, .04)[0].astype(float) * (2 / 257), 0, 255).astype(np.uint8)
                 np.testing.assert_array_equal(np.asarray(image), expected)
 
     def test_empty_expired_and_invalid_requests(self):
@@ -150,6 +185,20 @@ class HTTPTests(unittest.TestCase):
         with self.get("/api/volume") as response:
             self.assertEqual(response.headers["X-Volume-Version"], "3")
 
+    def test_slice_window_low_is_applied_after_sixteen_bit_quantization(self):
+        source = np.array([[[.002, .004, .006, .008]]], dtype=np.float32)
+        self.history.append(source, 1, 0, HEALTH)
+        with self.get("/api/slice?axis=0&index=0&window_min=0.004&window_max=0.008") as response:
+            with Image.open(BytesIO(response.read())) as image:
+                values = display_voxels(source)[0].astype(float) * (.01 / 65535)
+                expected = np.clip((values - .004) * (255 / .004), 0, 255).astype(np.uint8)
+                np.testing.assert_array_equal(np.asarray(image), expected)
+        for minimum in ("-1", "nan", "inf", "0.01", "0.02"):
+            with self.subTest(minimum=minimum), self.assertRaises(urllib.error.HTTPError) as result:
+                self.get(f"/api/slice?window_min={minimum}")
+            self.assertEqual(result.exception.code, 400)
+            result.exception.close()
+
     def test_interior_window_reveals_detail_on_each_axis_without_changing_volume(self):
         source = np.linspace(0, .01, 24, dtype=np.float32).reshape(2, 3, 4)
         self.history.append(source, 40, 0, HEALTH)
@@ -157,7 +206,7 @@ class HTTPTests(unittest.TestCase):
         for axis in range(3):
             with self.get(f"/api/slice?v=1&axis={axis}&index=0&window_max=0.004") as response:
                 with Image.open(BytesIO(response.read())) as image:
-                    expected = np.clip(np.take(original, 0, axis=axis) * 2.5,
+                    expected = np.clip(np.take(original, 0, axis=axis).astype(float) * (2.5 / 257),
                                        0, 255).astype(np.uint8)
                     np.testing.assert_array_equal(np.asarray(image), expected)
         with self.get("/api/volume?v=1") as response:
@@ -210,6 +259,26 @@ class ControlHTTPTests(unittest.TestCase):
             self.assertEqual(json.load(response)["reconstruction_control"], state)
         self.assertEqual([command for command, _ in self.proxy.calls],
                          ["GetReconstruction", "GetReconstruction", "ConfigureReconstruction", "GetReconstruction"])
+
+    def test_slice_planes_are_validated_here_and_moved_on_the_device(self):
+        planes = [dict(origin=[4, 0, 0], u=[0, 1, 0], v=[0, 0, 1]),
+                  dict(origin=[-2.5, 30, 1], u=[.9, .2, 0], v=[0, 0, 1.5]),
+                  dict(origin=[0, 0, 32], u=[1, 0, 0], v=[0, 1, 0])]
+        send = lambda value: urllib.request.urlopen(urllib.request.Request(
+            self.url + "/api/slices", data=json.dumps(value).encode(),
+            headers={"Content-Type": "application/json"}), timeout=3)
+        with send(planes) as response:
+            self.assertEqual(json.load(response), self.proxy.state)
+        command, argument = self.proxy.calls[-1]
+        self.assertEqual(command, "ConfigureSlices")
+        self.assertEqual(json.loads(argument), [{key: [float(value) for value in plane[key]] for key in plane}
+                                                for plane in planes])
+        for bad in (planes[:2], dict(planes=planes), [dict(plane, u=[0, 0, 0]) for plane in planes]):
+            with self.subTest(bad=bad), self.assertRaises(urllib.error.HTTPError) as result:
+                send(bad)
+            self.assertEqual(result.exception.code, 400)
+            result.exception.close()
+        self.assertEqual(len(self.proxy.calls), 1)
 
     def test_a_pull_set_shares_settings_and_answers_for_the_device_that_took_a_scan(self):
         other = type(self.proxy)()

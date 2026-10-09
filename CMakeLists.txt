@@ -47,10 +47,35 @@ if(EXAMPLES_PIPELINE)
             ${CMAKE_CURRENT_SOURCE_DIR}/tomography/stream_smoke.py
             --device-server $<TARGET_FILE:pipeline_device>)
         set_tests_properties(tomography_stream_gpu_tcp PROPERTIES TIMEOUT 150 LABELS gpu)
+        # Sliding-window FBP: every update is checked against the window it should hold.
+        add_test(NAME tomography_updates_gpu_tcp COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tomography/demo.py
+            --device-server $<TARGET_FILE:pipeline_device>
+            --algorithm fbp --update-projections 16 --scans 3 --scan-period 0 --phantom-period 3)
+        add_test(NAME tomography_slices_gpu_tcp COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tomography/demo.py
+            --device-server $<TARGET_FILE:pipeline_device>
+            --output-mode slices --update-projections 16 --scans 3 --scan-period 0 --phantom-period 3)
+        set_tests_properties(tomography_updates_gpu_tcp tomography_slices_gpu_tcp PROPERTIES
+            TIMEOUT 240 LABELS gpu)
+        # TomocuPy's methods are optional: build_tomocupy.sh leaves this stamp.
+        if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/build-tomocupy/stamp)
+            foreach(method fourierrec lprec linerec)
+                add_test(NAME tomography_${method}_gpu_tcp COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tomography/demo.py
+                    --device-server $<TARGET_FILE:pipeline_device>
+                    --algorithm ${method} --update-projections 16 --scans 3 --scan-period 0
+                    --phantom-period 3)
+                set_tests_properties(tomography_${method}_gpu_tcp PROPERTIES TIMEOUT 240 LABELS gpu)
+                if(EXAMPLES_PYTHON_PREFIX)
+                    set_tests_properties(tomography_${method}_gpu_tcp PROPERTIES
+                        ENVIRONMENT "TANGO_UCX_PREFIX=${EXAMPLES_PYTHON_PREFIX}")
+                endif()
+            endforeach()
+        endif()
         if(EXAMPLES_PYTHON_PREFIX)
-            set_tests_properties(tomography_gpu_tcp PROPERTIES
-                ENVIRONMENT "TANGO_UCX_PREFIX=${EXAMPLES_PYTHON_PREFIX}")
-            set_tests_properties(tomography_stream_gpu_tcp PROPERTIES
+            set_tests_properties(tomography_gpu_tcp tomography_stream_gpu_tcp
+                tomography_updates_gpu_tcp tomography_slices_gpu_tcp PROPERTIES
                 ENVIRONMENT "TANGO_UCX_PREFIX=${EXAMPLES_PYTHON_PREFIX}")
         endif()
     endif()

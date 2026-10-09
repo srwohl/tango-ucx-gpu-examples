@@ -11,15 +11,16 @@ CHOICES = {
     "network": ("tcp", "auto", "rdma"),
     "processing_mode": ("scalar", "batched"),
     "sinogram_memory": ("gpu", "host"),
-    "output_mode": ("volume", "blocks"),
+    "output_mode": ("volume", "blocks", "slices"),
 }
 BATCH_KEYS = {"transport_batch", "processing_batch"}
 GPU_KEYS = {"gpu", "decompress_gpu", "correct_gpu", "reconstruct_gpu"}
 MEMORY_KEYS = {"host_buffer_mib", "pinned_buffer_mib", "output_host_mib"}
 FLOAT_KEYS = {"receive_budget_mib", "scan_period"}
 GEOMETRY_KEYS = {"pixels", "slices", "angles"}
+BOOLEAN_KEYS = {"saving", "decompression"}
 OPTION_KEYS = (set(CHOICES) | BATCH_KEYS | GPU_KEYS | MEMORY_KEYS | FLOAT_KEYS | GEOMETRY_KEYS |
-               {"net_devices", "reconstructors"})
+               BOOLEAN_KEYS | {"net_devices", "reconstructors", "update_projections"})
 # tango-ucx grants at most 1024 publisher slots; a larger budget buffers no further frames.
 MAX_BUFFERED_FRAMES = 1024
 # Each link's receive and publish sides use the budget, mostly on GPU: bound large detectors.
@@ -69,17 +70,21 @@ def validate_options(options, gpu_count=None):
         raise ValueError(f"unknown pipeline settings: {', '.join(sorted(unknown))}")
     result = dict(options)
     for key, value in result.items():
-        if key in CHOICES:
+        if key in BOOLEAN_KEYS:
+            if type(value) is not bool:
+                raise ValueError(f"{key} must be a boolean")
+        elif key in CHOICES:
             if not isinstance(value, str) or value not in CHOICES[key]:
                 raise ValueError(f"{key} must be one of {', '.join(CHOICES[key])}")
         elif key == "net_devices":
             if value is not None and (not isinstance(value, str) or not value.strip() or
                                       any(ord(c) < 32 for c in value)):
                 raise ValueError("net_devices must be null or a nonempty device string")
-        elif key in BATCH_KEYS | GPU_KEYS | MEMORY_KEYS | GEOMETRY_KEYS | {"reconstructors"}:
+        elif key in BATCH_KEYS | GPU_KEYS | MEMORY_KEYS | GEOMETRY_KEYS | {"reconstructors", "update_projections"}:
             if type(value) is not int:
                 raise ValueError(f"{key} must be an integer")
-            minimum = 0 if key in GPU_KEYS else 1
+            # Zero projections per update publishes once per scan.
+            minimum = 0 if key in GPU_KEYS | {"update_projections"} else 1
             maximum = MAX_BATCH if key in BATCH_KEYS else MAX_RECONSTRUCTORS if key == "reconstructors" else None
             if value < minimum or (maximum is not None and value > maximum):
                 raise ValueError(f"{key} must be {f'1..{maximum}' if maximum else f'at least {minimum}'}")
@@ -94,7 +99,7 @@ def validate_options(options, gpu_count=None):
                 raise ValueError(f"{key} must be a finite number")
             if value < 0 or (key == "receive_budget_mib" and value == 0):
                 raise ValueError(f"{key} must be {'positive' if key == 'receive_budget_mib' else 'nonnegative'}")
-    if (result.get("processing_mode") == "batched" and "processing_batch" in result and
+    if (result.get("decompression", True) and result.get("processing_mode") == "batched" and "processing_batch" in result and
             "transport_batch" in result and result["processing_batch"] > result["transport_batch"]):
         raise ValueError("batched decompression processing_batch must not exceed transport_batch")
     return result

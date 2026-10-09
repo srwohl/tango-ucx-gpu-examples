@@ -6,7 +6,74 @@ import lz4.block
 import numpy as np
 
 
-def generate(directory, pixels, slices, angles, gpu):
+def orb_mask(pixels, slices):
+    """A visible ellipsoid, using broadcast coordinates rather than a coordinate volume."""
+    horizontal = (np.arange(pixels, dtype=np.float32) + .5) / pixels * 2 - 1
+    vertical = (np.arange(slices, dtype=np.float32) + .5) / slices * 2 - 1
+    return (((horizontal[None, None, :] - .35) / .16)**2 +
+            (horizontal[None, :, None] / .23)**2 + (vertical[:, None, None] / .8)**2 <= 1)
+
+
+def orb_scale(cycle, period):
+    return np.float32(.6 + .4 * np.cos(2 * np.pi * (cycle % period) / period))
+
+
+def detector_counts(attenuation, dark, response):
+    transmission = np.negative(attenuation)
+    np.exp(transmission, out=transmission)
+    transmission *= response
+    transmission += dark
+    np.rint(transmission, out=transmission)
+    return transmission.astype(np.uint16)
+
+
+class DynamicPhantom:
+    """Two disk-backed projection bases; scratch space is one detector frame."""
+
+    def __init__(self, directory, scan):
+        directory = Path(directory)
+        self.period = scan["source"]["orb_period"]
+        self.base = np.load(directory / "attenuation.npy", mmap_mode="r")
+        self.orb = np.load(directory / "orb.npy", mmap_mode="r")
+        with np.load(directory / "reference.npz") as reference:
+            self.dark = reference["dark"]
+            self.flat = reference["flat"]
+        self.response = (self.flat - self.dark).astype(np.float32)
+
+    def frame(self, cycle, projection):
+        attenuation = self.base[projection] + orb_scale(cycle, self.period) * self.orb[projection]
+        return detector_counts(attenuation, self.dark, self.response)
+
+    def compressed(self, cycle, projection):
+        return lz4.block.compress(self.frame(cycle, projection).tobytes(), store_size=False)
+
+    def raw(self, cycle, projection):
+        return self.frame(cycle, projection).tobytes()
+
+    def sinogram(self, cycle):
+        expected = np.empty((self.dark.shape[0], len(self.base), self.dark.shape[1]), np.float32)
+        for projection in range(len(self.base)):
+            transmission = (self.frame(cycle, projection).astype(np.float64) - self.dark) / self.response
+            expected[:, projection, :] = -np.log(np.clip(transmission, 1e-6, 1))
+        return expected
+
+
+def uncompressed_scan(directory, scan):
+    """Prepare fixed-size detector payloads for a pipeline without a decoder."""
+    directory = Path(directory)
+    frame_bytes = scan["rows"] * scan["columns"] * (4 if scan["element"] == "f32" else 2)
+    frames = []
+    with (directory / "compressed.bin").open("rb") as source, (directory / "raw.bin").open("xb") as output:
+        for frame in scan["frames"]:
+            payload = lz4.block.decompress(source.read(frame["bytes"]), uncompressed_size=frame_bytes)
+            if len(payload) != frame_bytes:
+                raise ValueError("detector frame size differs from scan geometry")
+            frames.append(dict(frame, bytes=frame_bytes, offset=output.tell()))
+            output.write(payload)
+    return dict(scan, codec="raw", frames=frames)
+
+
+def generate(directory, pixels, slices, angles, gpu, orb_period=0):
     import astra
 
     if not astra.use_cuda():
@@ -19,17 +86,40 @@ def generate(directory, pixels, slices, angles, gpu):
     phantom_id, phantom = astra.data3d.shepp_logan(volume_geometry)
     astra.data3d.delete(phantom_id)
     phantom *= np.float32(0.01)
+    source = dict(type="phantom")
+    if orb_period:
+        mask = orb_mask(pixels, slices)
+        orb = mask.astype(np.float32) * np.float32(.01)
+        phantom[mask] = 0
+        orb_id, orb_attenuation = astra.create_sino3d_gpu(
+            orb, projection_geometry, volume_geometry, gpuIndex=gpu)
+        astra.data3d.delete(orb_id)
+        del orb
+        np.save(directory / "orb.npy", np.ascontiguousarray(orb_attenuation.transpose(1, 0, 2)))
+        source["orb_period"] = orb_period
     projection_id, attenuation = astra.create_sino3d_gpu(
         phantom, projection_geometry, volume_geometry, gpuIndex=gpu)
     astra.data3d.delete(projection_id)
+    if orb_period:
+        np.save(directory / "attenuation.npy", np.ascontiguousarray(attenuation.transpose(1, 0, 2)))
+        phantom[mask] = np.float32(.01)
     row, column = np.indices((slices, pixels))
     dark = (16 + (row + column) % 7).astype(np.uint16)
     response = (4000 + (column % 5) * 100).astype(np.uint16)
     flat = dark + response
-    raw = np.rint(dark[:, None, :] + response[:, None, :] * np.exp(-attenuation)).astype(np.uint16)
-    return _write_scan(directory, theta, dark, flat,
-                       (raw[:, i, :] for i in range(angles)),
-                       dict(type="phantom"), phantom=phantom, raw=raw)
+    if orb_period:
+        projections = (detector_counts(attenuation[:, index, :] + orb_attenuation[:, index, :],
+                                       dark, response) for index in range(angles))
+        meta = _write_scan(directory, theta, dark, flat, projections, source, phantom=phantom)
+    else:
+        raw = np.rint(dark[:, None, :] + response[:, None, :] * np.exp(-attenuation)).astype(np.uint16)
+        meta = _write_scan(directory, theta, dark, flat,
+                           (raw[:, index, :] for index in range(angles)), source, phantom=phantom, raw=raw)
+    if orb_period:
+        frame_bytes = slices * pixels * 2
+        meta["max_compressed_bytes"] = max(meta["max_compressed_bytes"], frame_bytes + frame_bytes // 255 + 16)
+        (directory / "scan.json").write_text(json.dumps(meta, indent=2))
+    return meta
 
 
 def selection(value):

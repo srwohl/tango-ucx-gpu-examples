@@ -28,7 +28,7 @@ class Proxy:
         return json.dumps(self.state)
 proxy = Proxy()
 history = VolumeHistory()
-history.append(np.zeros((2, 4, 4), dtype=np.float32), 1, 0, dict(skipped=0, transport='fixture'), proxy.state['active'])
+history.append(np.arange(32, dtype=np.float32).reshape(2, 4, 4) * .0001, 1, 0, dict(skipped=0, transport='fixture'), proxy.state['active'])
 Base = make_handler(history, Path('/tmp'), ReconstructionControl(proxy))
 class Handler(Base):
     def do_GET(self):
@@ -74,11 +74,70 @@ server.stderr.on('data', data => process.stderr.write(data));
     await page.goto(`http://127.0.0.1:${port}`);
     await page.waitForFunction(() => displayed?.scan_id === 1);
     assert.equal(await page.evaluate(() => renderer.backend), mode === 'fallback' ? 'WebGL 2' : 'WebGPU');
+    assert.equal(await page.evaluate(() => inspectionData instanceof Uint16Array), true);
+    await page.select('#view-mode', 'inspection');
+    await page.waitForFunction(() => slicePanels[0].canvas.width > 1);
+    const samples = await page.evaluate(() => {
+      document.querySelector('#window-high').value = '.01';
+      document.querySelector('#show-crosshair').checked = false;
+      drawInspection();
+      return slicePanels.map(panel => {
+        const [width, height] = panel.imageSize;
+        const scale = Math.min(panel.canvas.width / width, panel.canvas.height / height);
+        const left = (panel.canvas.width - width * scale) / 2;
+        const top = (panel.canvas.height - height * scale) / 2;
+        return panel.canvas.getContext('2d').getImageData(Math.floor(left + .5 * scale), Math.floor(top + .5 * scale), 1, 1).data[0];
+      });
+    });
+    assert.deepEqual(samples, [41, 20, 5]);
+    await page.evaluate(() => {document.querySelector('#show-crosshair').checked = true; drawInspection();});
+    await page.evaluate(() => {
+      slicePanels[0].slider.value = '0';
+      slicePanels[0].slider.dispatchEvent(new Event('input'));
+    });
+    assert.deepEqual(await page.evaluate(() => inspectionPoint), [0, 2, 2]);
+    const axial = await page.$('#inspection canvas');
+    await axial.evaluate(element => element.scrollIntoView({block: 'center'}));
+    const axialBox = await axial.boundingBox();
+    const axialImageWidth = Math.min(axialBox.width, axialBox.height);
+    await page.mouse.click(axialBox.x + (axialBox.width - axialImageWidth) / 2 + axialImageWidth * .375, axialBox.y + axialBox.height * .375);
+    assert.deepEqual(await page.evaluate(() => inspectionPoint), [0, 1, 1]);
+    await page.evaluate(() => {
+      document.querySelector('#spacing-z').value = '5';
+      document.querySelector('#spacing-unit').value = 'µm';
+      document.querySelector('#spacing-unit').dispatchEvent(new Event('change'));
+    });
+    assert.deepEqual(await page.evaluate(() => renderer.extent), [.2, .2, .5]);
+    assert.match(await page.$eval('#point-position', element => element.textContent), /µm/);
+    await page.click('#focus-point');
+    assert.deepEqual(await page.evaluate(() => renderer.target), await page.evaluate(() => renderer.point()));
+    await page.click('#clip-point');
+    assert.equal(await page.$eval('#clip-enabled', element => element.checked), true);
+    assert.equal(await page.$eval('#cut', element => Number(element.value)), .25);
+    const volumeCanvas = await page.$('#volume');
+    await volumeCanvas.evaluate(element => element.scrollIntoView({block: 'center'}));
+    const volumeBox = await volumeCanvas.boundingBox();
+    const targetBefore = await page.evaluate(() => [...renderer.target]);
+    await page.keyboard.down('Shift');
+    await page.mouse.move(volumeBox.x + volumeBox.width / 2, volumeBox.y + volumeBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(volumeBox.x + volumeBox.width / 2 + 40, volumeBox.y + volumeBox.height / 2 + 20);
+    await page.mouse.up(); await page.keyboard.up('Shift');
+    assert.notDeepEqual(await page.evaluate(() => renderer.target), targetBefore);
+    await page.evaluate(() => renderer.zoom(-10));
+    assert.ok(await page.evaluate(() => renderer.distance < .5));
+    for (const axis of ['0', '1', '2']) {
+      await page.select('#clip-axis', axis);
+      for (const side of ['0', '1']) await page.select('#clip-side', side);
+    }
+    await page.select('#spacing-unit', 'voxel');
+    await page.click('#reset');
+    await page.select('#view-mode', 'volume');
     await page.evaluate(() => {
       renderer.device?.addEventListener('uncapturederror', event => window.renderError = event.error.message);
       window.testVolume = async (size, features) => {
         const shape = [size / 2, size, size], [z, y, x] = shape;
-        const voxels = new Uint8Array(z * y * x);
+        const voxels = new Uint16Array(z * y * x);
         for (let iz = 0; iz < z; iz++) for (let iy = 0; iy < y; iy++) for (let ix = 0; ix < x; ix++) {
           const px = (ix + .5) / x * 2 - 1, py = (iy + .5) / y * 2 - 1, pz = (iz + .5) / z * 2 - 1;
           const radius = Math.hypot(px, py, pz);
@@ -88,7 +147,7 @@ server.stderr.on('data', data => process.stderr.write(data));
             if (Math.hypot(px + .27, py - .15, pz + .1) < .17) value = 77;
             if (Math.hypot(px - .27, py + .15, pz - .1) < .17) value = 102;
           }
-          voxels[(iz * y + iy) * x + ix] = value;
+          voxels[(iz * y + iy) * x + ix] = value * 257;
         }
         await renderer.setVolume(voxels, shape);
         if (renderer.device) await renderer.device.queue.onSubmittedWorkDone();

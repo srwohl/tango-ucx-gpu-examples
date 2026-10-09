@@ -1,10 +1,18 @@
 """GPU reconstruction, explicit CPU GridRec, and independent host references."""
 from contextlib import ExitStack
+import os
+from pathlib import Path
 
 import numpy as np
 
-ALGORITHMS = ("sirt", "fbp", "gridrec")
+# TomocuPy's methods are built separately (build_tomocupy.sh) and are optional.
+TOMOCUPY_ALGORITHMS = ("fourierrec", "lprec", "linerec")
+ALGORITHMS = ("sirt", "fbp", "gridrec") + TOMOCUPY_ALGORITHMS
 FILTERS = ("ram-lak", "shepp-logan", "hann", "parzen")
+# TomocuPy's names for the common filters, and the ones only it has.
+TOMOCUPY_FILTERS = {"ram-lak": "ramp", "shepp-logan": "shepp", "hann": "hann", "parzen": "parzen",
+                    "hamming": "hamming", "cosine": "cosine", "cosine2": "cosine2"}
+TOMOCUPY_DTYPES = ("float32", "float16")
 GRIDREC_FILTERS = {"ram-lak": "ramlak", "shepp-logan": "shepp", "hann": "hann", "parzen": "parzen"}
 # Padded detector samples per batched FBP filter call; bounds its transient GPU scratch.
 FBP_FILTER_SAMPLES = 1 << 24
@@ -19,24 +27,26 @@ def live_configuration(options, columns):
     if not isinstance(options, dict):
         raise ValueError("reconstruction settings must be an object")
     allowed = {"algorithm", "backend", "filter", "iterations", "threads", "relaxation",
-               "min_constraint", "max_constraint", "filter_cutoff", "center",
+               "min_constraint", "max_constraint", "filter_cutoff", "center", "dtype",
                "gaussian_fwhm", "scale_factor", "slices_per_block"}
     if options.keys() - allowed:
         raise ValueError(f"unknown reconstruction settings: {sorted(options.keys() - allowed)}")
     method = options.get("algorithm")
     if method not in ALGORITHMS:
-        raise ValueError("algorithm must be sirt, fbp or gridrec")
+        raise ValueError(f"algorithm must be one of {', '.join(ALGORITHMS)}")
+    if method not in available_algorithms():
+        raise ValueError("the TomocuPy methods are not built: run `pixi run build-tomocupy`")
     required_numeric = {"gaussian_fwhm", "scale_factor", "slices_per_block"}
     required_numeric.update({"sirt": ("iterations", "relaxation"),
-                             "gridrec": ("threads",), "fbp": ()}[method])
+                             "gridrec": ("threads",)}.get(method, ()))
     for key in required_numeric:
         if key in options and options[key] is None:
             raise ValueError(f"{key} must be numeric")
-    if "filter" in options and options["filter"] not in FILTERS:
+    if "filter" in options and options["filter"] not in TOMOCUPY_FILTERS:
         if options["filter"] is not None or method != "sirt":
             raise ValueError("unknown reconstruction filter")
     values = {key: value for key, value in options.items()
-              if key not in ("algorithm", "backend", "filter") and value is not None}
+              if key not in ("algorithm", "backend", "filter", "dtype") and value is not None}
     if method == "sirt":
         for key in ("min_constraint", "max_constraint"):
             if key in options:
@@ -44,9 +54,11 @@ def live_configuration(options, columns):
     for key, value in values.items():
         if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))):
             raise ValueError(f"{key} must be numeric or null")
-    result = configuration(method, options.get("filter") or "ram-lak", **values)
+    result = configuration(method, options.get("filter") or "ram-lak", dtype=options.get("dtype"),
+                           **values)
     if result["center"] is not None and result["center"] > columns:
         raise ValueError("center must lie within the detector [0, columns]")
+    tomocupy_geometry(result, columns)
     if "backend" in options and options["backend"] != result["backend"]:
         raise ValueError("backend is selected by the algorithm")
     return result
@@ -55,11 +67,20 @@ def live_configuration(options, columns):
 def configuration(algorithm, filter_name="ram-lak", iterations=40, threads=4, *,
                   relaxation=1.0, min_constraint=0.0, max_constraint=None,
                   filter_cutoff=None, center=None, gaussian_fwhm=0.0, scale_factor=1.0,
-                  slices_per_block=0):
+                  slices_per_block=0, dtype=None):
     if algorithm not in ALGORITHMS:
         raise ValueError(f"unknown reconstruction algorithm: {algorithm}")
-    if filter_name not in FILTERS:
+    tomocupy = algorithm in TOMOCUPY_ALGORITHMS
+    if filter_name not in (TOMOCUPY_FILTERS if tomocupy else FILTERS):
+        if filter_name in TOMOCUPY_FILTERS:
+            raise ValueError(f"the {filter_name} filter belongs to the TomocuPy methods")
         raise ValueError(f"unknown reconstruction filter: {filter_name}")
+    if tomocupy:
+        dtype = "float32" if dtype is None else dtype
+        if dtype not in TOMOCUPY_DTYPES:
+            raise ValueError("dtype must be float32 or float16")
+    elif dtype is not None:
+        raise ValueError("dtype applies only to the TomocuPy methods")
     for name, value in (("iterations", iterations), ("threads", threads)):
         if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < 1:
             raise ValueError(f"{name} must be a positive integer")
@@ -77,22 +98,53 @@ def configuration(algorithm, filter_name="ram-lak", iterations=40, threads=4, *,
     if center is not None:
         if not np.isfinite(center) or center < 0:
             raise ValueError("center must be a finite nonnegative detector coordinate")
-        if algorithm != "gridrec":
-            raise ValueError("center is currently supported only by GridRec")
+        if algorithm != "gridrec" and not tomocupy:
+            raise ValueError("center is supported by GridRec and the TomocuPy methods")
     if not np.isfinite(gaussian_fwhm) or gaussian_fwhm < 0:
         raise ValueError("Gaussian FWHM must be finite and nonnegative")
     if not np.isfinite(scale_factor) or scale_factor <= 0:
         raise ValueError("scale factor must be finite and positive")
-    return dict(algorithm=algorithm, backend="tomopy-cpu" if algorithm == "gridrec" else "astra-cuda",
+    return dict(algorithm=algorithm, backend="tomopy-cpu" if algorithm == "gridrec" else
+                "tomocupy-cuda" if tomocupy else "astra-cuda",
                 filter=None if algorithm == "sirt" else filter_name,
                 iterations=iterations if algorithm == "sirt" else None,
                 threads=threads if algorithm == "gridrec" else None,
                 relaxation=relaxation if algorithm == "sirt" else None,
                 min_constraint=min_constraint if algorithm == "sirt" else None,
                 max_constraint=max_constraint if algorithm == "sirt" else None,
-                filter_cutoff=filter_cutoff, center=center,
+                filter_cutoff=filter_cutoff, center=center, dtype=dtype,
                 gaussian_fwhm=gaussian_fwhm, scale_factor=scale_factor,
                 slices_per_block=int(slices_per_block))
+
+
+def tomocupy_build():
+    """Where build_tomocupy.sh leaves the importable package."""
+    return Path(os.environ.get("TOMOCUPY_BUILD") or
+                Path(__file__).resolve().parents[1] / "build-tomocupy" / "python")
+
+
+def available_algorithms():
+    """Every method this installation can run: TomocuPy's only once they are built."""
+    built = (tomocupy_build() / "tomocupy" / "_cfunc_lprec.so").exists()
+    return tuple(name for name in ALGORITHMS if built or name not in TOMOCUPY_ALGORITHMS)
+
+
+def tomocupy_geometry(options, columns, theta=None):
+    """Reject a scan a TomocuPy method cannot reconstruct, before anything is allocated."""
+    method = options["algorithm"]
+    if method not in TOMOCUPY_ALGORITHMS:
+        return
+    if columns < 32:
+        raise ValueError("the TomocuPy methods need at least 32 detector columns")
+    if method == "fourierrec" and columns % 2:
+        raise ValueError("fourierrec needs an even detector width")
+    if options.get("dtype") == "float16" and method != "linerec" and columns & (columns - 1):
+        raise ValueError(f"float16 {method} needs a power-of-two detector width")
+    if method == "lprec" and theta is not None:
+        theta = np.asarray(theta, dtype=np.float64)
+        step = np.pi / len(theta)
+        if len(theta) < 2 or not np.allclose(theta, np.arange(len(theta)) * step, rtol=0, atol=step / 100):
+            raise ValueError("lprec needs equally spaced angles over [0, 180) degrees")
 
 
 def slice_blocks(rows, slices_per_block=0):
@@ -341,8 +393,12 @@ def fbp_gpu(sinogram, output, theta, gpu, filter_name, *, filter_cutoff=None):
 
 
 def reference_reconstruction(sinogram, theta, gpu, options, *, block_rows=None):
-    """Independent host-corrected input and ASTRA objects, outside timed acquisition."""
-    if block_rows is None:
+    """Independent host-corrected input and ASTRA objects, outside timed acquisition.
+
+    The TomocuPy methods have no host implementation: their reference is the same backend.
+    """
+    if block_rows is None or options["algorithm"] in TOMOCUPY_ALGORITHMS:
+        # The TomocuPy reference takes the device's blocks from the settings.
         result = _reference_reconstruction(sinogram, theta, gpu, options)
     else:
         result = np.empty((sinogram.shape[0], sinogram.shape[2], sinogram.shape[2]), np.float32)
@@ -356,6 +412,9 @@ def _reference_reconstruction(sinogram, theta, gpu, options):
     if method == "gridrec":
         return gridrec(sinogram, theta, options["filter"], options["threads"],
                        center=options.get("center"))
+    if method in TOMOCUPY_ALGORITHMS:
+        from tomocupy_backend import reference
+        return reference(sinogram, theta, gpu, options)
     import astra
 
     rows, _, columns = sinogram.shape

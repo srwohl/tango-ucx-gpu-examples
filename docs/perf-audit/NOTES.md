@@ -403,3 +403,6 @@ FBP, metadata, layout, and transport reports. It supersedes the earlier attribut
 of oversized SYSV-segment failures to Tango: a raw UCX reproducer establishes a
 UCX 1.22 shared-memory length-field overflow. Default segment settings pass;
 the tested rendezvous override is not a validated workaround.
+
+`GPU-SATURATION-FOLLOWUP.md` (2026-10-08) explains why the live sliding-window FBP run stays
+near 57% GPU under MPS: one reconstruct thread, host-bound in the per-slice loop of finding 2.

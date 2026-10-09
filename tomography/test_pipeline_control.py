@@ -25,9 +25,23 @@ def running_state():
 
 class ValidationTests(unittest.TestCase):
     def test_all_settings_and_partial_updates(self):
+        self.assertEqual(validate_options(dict(saving=False, decompression=True)),
+                         dict(saving=False, decompression=True))
+        for key in ("saving", "decompression"):
+            for value in (0, 1, "false", None):
+                with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                    validate_options({key: value})
         self.assertEqual(validate_options(OPTIONS, 2), OPTIONS)
         self.assertEqual(validate_options(dict(decompress_gpu=1, scan_period=0), 2),
                          dict(decompress_gpu=1, scan_period=0))
+
+    def test_slice_output_and_update_interval_are_launch_settings(self):
+        options = dict(output_mode="slices", update_projections=0)
+        self.assertEqual(validate_options(options), options)
+        self.assertEqual(validate_options(dict(update_projections=16)), dict(update_projections=16))
+        for value in (-1, 1.5, True, "16", None):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_options(dict(update_projections=value))
 
     def test_unknown_types_ranges_and_nonfinite_values(self):
         invalid = [None, [], {}, {"surprise": 1}, {"network": "ethernet"},

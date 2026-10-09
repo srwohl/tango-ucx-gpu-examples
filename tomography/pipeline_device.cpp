@@ -4,9 +4,11 @@
 #include <tango/tango.h>
 #include <cuda_runtime_api.h>
 #include <pybind11/embed.h>
+#include <pybind11/stl.h>
 #include <nlohmann/json.hpp>
 #include "reconstruction_settings.h"
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstring>
 #include <filesystem>
@@ -36,6 +38,16 @@ struct BlockFields {
     std::uint64_t settings_revision, slice_start, slice_count;
 };
 static_assert(sizeof(BlockFields) == 64);
+// Slice output: three planes, each an origin and two steps in (z, y, x) volume indices.
+using Planes = std::array<double, 27>;
+const std::string slice_field_dtype = field_dtype.substr(0, field_dtype.size() - 1) +
+    ", ('settings_revision', '<u8'), ('planes', '<f8', (3, 3, 3))]";
+struct SliceFields {
+    Fields frame;
+    std::uint64_t settings_revision;
+    Planes planes;
+};
+static_assert(sizeof(SliceFields) == 264);
 struct Options {
     std::string role, upstream;
     std::filesystem::path file;
@@ -67,6 +79,25 @@ Json validated_reconstruction(const Json &options) {
     }
 }
 
+// Null selects the three orthogonal planes through the volume centre.
+Planes validated_planes(const Json &planes) {
+    py::gil_scoped_acquire gil;
+    try {
+        auto streaming = py::module_::import("streaming");
+        py::object value = planes.is_null() ?
+            streaming.attr("default_planes")(cfg.scan.at("rows").get<std::uint64_t>(),
+                                             cfg.scan.at("columns").get<std::uint64_t>()) :
+            py::module_::import("json").attr("loads")(planes.dump());
+        const auto flat = streaming.attr("plane_array")(value).attr("ravel")().attr("tolist")()
+            .cast<std::vector<double>>();
+        Planes result;
+        std::copy_n(flat.begin(), result.size(), result.begin());
+        return result;
+    } catch(const py::error_already_set &error) {
+        throw std::runtime_error(error.what());
+    }
+}
+
 class Device : public TANGO_BASE_CLASS {
 public:
     Device(Tango::DeviceClass *owner, const std::string &name)
@@ -75,18 +106,28 @@ public:
     void init_device() override {
         const auto buffers = cfg.scan.value("buffering", Json::object());
         block_output = cfg.role == "reconstruct" && buffers.value("output_mode", "volume") == "blocks";
+        slice_output = cfg.role == "reconstruct" && buffers.value("output_mode", "volume") == "slices";
+        const auto rows = cfg.scan.at("rows").get<std::uint64_t>();
+        const auto cols = cfg.scan.at("columns").get<std::uint64_t>();
         if(cfg.role == "reconstruct") {
             reconstruction = std::make_unique<ReconstructionSettings>(validated_reconstruction(
                 cfg.scan.value("reconstruction", Json{{"algorithm", "sirt"}, {"iterations", cfg.iterations}})));
+            update_projections = buffers.value("update_projections", std::uint64_t(0));
+            if(slice_output) {
+                slice_size = std::max(rows, cols);
+                planes = validated_planes(buffers.value("slice_planes", Json()));
+            }
         }
-        const auto rows = cfg.scan.at("rows").get<std::uint64_t>();
-        const auto cols = cfg.scan.at("columns").get<std::uint64_t>();
         Description d;
         d.field_bytes = sizeof(Fields);
         d.field_dtype = field_dtype;
         if(block_output) {
             d.field_bytes = sizeof(BlockFields);
             d.field_dtype = block_field_dtype;
+        }
+        if(slice_output) {
+            d.field_bytes = sizeof(SliceFields);
+            d.field_dtype = slice_field_dtype;
         }
         Json text = cfg.scan;
         text.erase("frames");
@@ -95,19 +136,24 @@ public:
         text["scan_count"] = cfg.scan_count;
         d.application_text = text.dump();
         const bool detector_float = cfg.scan.value("element", "u16") == "f32";
+        const bool raw_source = cfg.role == "source" && cfg.scan.value("codec", "lz4-raw") == "raw";
         std::uint64_t bytes = rows * cols;
-        if(cfg.role == "source") {
+        if(cfg.role == "source" && !raw_source) {
             d.element = Element::Bytes;
             d.max_payload_bytes = cfg.scan.at("max_compressed_bytes");
             bytes = d.max_payload_bytes;
         } else {
-            d.element = cfg.role == "decompress" && !detector_float ? Element::U16 : Element::F32;
+            d.element = (cfg.role == "decompress" || raw_source) && !detector_float ? Element::U16 : Element::F32;
             d.shape = {rows, cols};
-            bytes *= cfg.role == "decompress" && !detector_float ? 2 : 4;
+            bytes *= (cfg.role == "decompress" || raw_source) && !detector_float ? 2 : 4;
             if(cfg.role == "reconstruct") {
                 output_rows = block_output ? buffers.at("output_block_rows").get<std::uint64_t>() : rows;
                 d.shape = {output_rows, cols, cols};
                 bytes = output_rows * cols * cols * 4;
+                if(slice_output) {
+                    d.shape = {3, slice_size, slice_size};
+                    bytes = 3 * slice_size * slice_size * 4;
+                }
             }
         }
         PublisherLimits limits;
@@ -154,7 +200,8 @@ public:
             const auto &d = input->description();
             const auto meta = Json::parse(d.application_text);
             const auto expected = cfg.role == "decompress" ? "source" :
-                                  cfg.role == "correct" ? "decompress" : "correct";
+                                  cfg.role == "correct" ? (cfg.scan.value("codec", "lz4-raw") == "raw" ?
+                                      "source" : "decompress") : "correct";
             if(d.field_bytes != sizeof(Fields) || d.field_dtype != field_dtype ||
                meta.at("role") != expected || meta.at("scan_id") != cfg.scan.at("scan_id") ||
                meta.at("rows") != cfg.scan.at("rows") ||
@@ -210,6 +257,7 @@ public:
                     {"slot_wait_ns", slot_wait_ns.load()},
                     {"publisher_budget_bytes", publisher_budget},
                     {"payload_bytes", output_payload_bytes},
+                    {"published_bytes", published_bytes.load()},
                     {"publisher_slots_free", h.slots_free}, {"publisher_slots_held", h.slots_held},
                     {"reconstruct_ns", reconstruct_ns.load()},
                     {"publisher_payload_storage_upper_bytes",
@@ -232,6 +280,16 @@ public:
         reconstruction->configure(options);
         return settings_state().dump();
     }
+    std::string configure_slices(const std::string &text) {
+        require_reconstruction();
+        if(!slice_output) throw std::runtime_error("slice planes need slice output");
+        // As above, the GIL comes before the command mutex. The next update uses the planes.
+        const auto requested = validated_planes(Json::parse(text));
+        std::lock_guard guard(commands);
+        planes = requested;
+        ++planes_revision;
+        return settings_state().dump();
+    }
     std::string reconstruction_for_scan(const std::string &text) {
         const auto scan_id = Json::parse(text).get<std::uint64_t>();
         std::lock_guard guard(commands);
@@ -251,13 +309,26 @@ private:
     }
     Json settings_state() const {
         auto state = reconstruction->state(cfg.scan.at("columns").get<std::uint64_t>());
-        state["output_mode"] = block_output ? "blocks" : "volume";
+        state["output_mode"] = block_output ? "blocks" : slice_output ? "slices" : "volume";
         state["output_capacity_slices"] = output_rows;
+        state["update_projections"] = update_projections;
+        if(slice_output) {
+            auto list = Json::array();
+            for(std::size_t plane = 0; plane < planes.size(); plane += 9) {
+                const auto vector = [&](std::size_t at) {
+                    return Json::array({planes[plane + at], planes[plane + at + 1], planes[plane + at + 2]});
+                };
+                list.push_back({{"origin", vector(0)}, {"u", vector(3)}, {"v", vector(6)}});
+            }
+            state["slices"] = {{"planes", list}, {"revision", planes_revision}, {"size", slice_size},
+                               {"volume_shape", {cfg.scan.at("rows"), cfg.scan.at("columns"), cfg.scan.at("columns")}}};
+        }
         return state;
     }
     std::uint32_t pull_range() const {
         // The source publishes a dark, a flat and the projections of each scan.
-        if(cfg.role == "decompress" && cfg.chains > 1)
+        if((cfg.role == "decompress" || (cfg.role == "correct" &&
+                cfg.scan.value("codec", "lz4-raw") == "raw")) && cfg.chains > 1)
             return cfg.scan.at("angles").get<std::uint32_t>() + 2;
         return cfg.role == "reconstruct" && cfg.reconstructors > 1 ?
             cfg.scan.at("angles").get<std::uint32_t>() : 0;
@@ -275,8 +346,17 @@ private:
         throw std::runtime_error("processing cancelled");
     }
     void produce(std::stop_token stop) {
-        std::ifstream data(cfg.file.parent_path() / "compressed.bin", std::ios::binary);
-        if(!data) throw std::runtime_error("cannot open compressed.bin");
+        py::gil_scoped_acquire gil;
+        py::object dynamic = py::none();
+        if(cfg.scan.at("source").contains("orb_period"))
+            dynamic = py::module_::import("scan").attr("DynamicPhantom")(
+                cfg.file.parent_path().string(),
+                py::module_::import("json").attr("loads")(cfg.scan.dump()));
+        const bool animate = !dynamic.is_none();
+        py::gil_scoped_release release;
+        const bool raw = cfg.scan.value("codec", "lz4-raw") == "raw";
+        std::ifstream data(cfg.file.parent_path() / (raw ? "raw.bin" : "compressed.bin"), std::ios::binary);
+        if(!data) throw std::runtime_error("cannot open detector payloads");
         for(std::uint64_t cycle = 0; !cfg.scan_count || cycle < cfg.scan_count; ++cycle) {
           if(cycle && finish_requested.load()) break;
           const auto next_scan = std::chrono::steady_clock::now() +
@@ -285,16 +365,28 @@ private:
           data.seekg(0);
           for(const auto &entry : cfg.scan.at("frames")) {
             auto slot = acquire(stop);
-            const auto bytes = entry.at("bytes").get<std::size_t>();
+            auto bytes = entry.at("bytes").get<std::size_t>();
             if(bytes > slot.payload().size()) throw std::runtime_error("compressed frame too large");
-            data.read(reinterpret_cast<char *>(slot.payload().data()),
-                      static_cast<std::streamsize>(bytes));
+            if(animate && entry.at("kind") == 2) {
+                py::gil_scoped_acquire frame_gil;
+                const auto compressed = dynamic.attr(raw ? "raw" : "compressed")(
+                    cycle, entry.at("projection").get<std::uint64_t>()).cast<std::string>();
+                bytes = compressed.size();
+                if(bytes > slot.payload().size()) throw std::runtime_error("compressed frame too large");
+                std::memcpy(slot.payload().data(), compressed.data(), bytes);
+                data.seekg(entry.at("bytes").get<std::streamoff>(), std::ios::cur);
+            } else {
+                data.read(reinterpret_cast<char *>(slot.payload().data()),
+                          static_cast<std::streamsize>(bytes));
+            }
             if(!data) throw std::runtime_error("truncated compressed scan");
             Fields fields{entry.at("kind"), entry.at("projection"), entry.at("theta"),
                           cfg.scan.at("scan_id").get<std::uint64_t>() + cycle,
                           cfg.scan.at("calibration_id").get<std::uint64_t>() + cycle};
             std::memcpy(slot.fields().data(), &fields, sizeof(fields));
-            std::move(slot).publish_bytes(bytes);
+            if(raw) std::move(slot).publish();
+            else std::move(slot).publish_bytes(bytes);
+            published_bytes += bytes;
             ++processed;
             ++published;
           }
@@ -319,6 +411,10 @@ private:
                 std::uint64_t current_scan = 0, calibration = 0, settings_revision = 0, block_rows = 0;
                 std::uint64_t next_index = 0;
                 const std::uint64_t range = pull_range();
+                // Reconstruction publishes every interval once its ring holds one rotation.
+                const auto angles = cfg.scan.at("angles").get<std::uint64_t>();
+                const std::uint64_t interval = update_projections ? update_projections : angles;
+                std::uint64_t ring_projections = 0;
                 try {
                     while(!stop.stop_requested()) {
                         auto batch = [&] {
@@ -434,10 +530,11 @@ private:
                                 py::gil_scoped_release release;
                                 std::this_thread::sleep_for(std::chrono::milliseconds(cfg.delay_ms));
                             }
+                            const bool due = cfg.role == "reconstruct" && ++ring_projections >= angles &&
+                                (fields.projection + 1) % interval == 0;
                             const bool emits = cfg.role == "decompress" ||
                                 (cfg.role == "correct" && fields.kind == 2) ||
-                                (cfg.role == "reconstruct" && !block_output && fields.projection + 1 ==
-                                    cfg.scan.at("angles").get<std::uint64_t>());
+                                (due && !block_output && !slice_output);
                             std::optional<Slot> output;
                             void *destination = nullptr;
                             if(emits) {
@@ -474,6 +571,25 @@ private:
                                     ++published;
                                 }
                             }
+                            if(slice_output && due) {
+                                auto slot = [&] {
+                                    py::gil_scoped_release release;
+                                    return acquire(stop);
+                                }();
+                                auto pointer = slot.gpu_payload(GpuStream{stream});
+                                SliceFields slice_fields{fields, settings_revision, {}};
+                                {
+                                    std::lock_guard guard(commands);
+                                    slice_fields.planes = planes;
+                                }
+                                processor.attr("reconstruct_slices")(
+                                    reinterpret_cast<std::uintptr_t>(pointer),
+                                    py::cast(std::vector<double>(slice_fields.planes.begin(),
+                                                                 slice_fields.planes.end())));
+                                std::memcpy(slot.fields().data(), &slice_fields, sizeof(slice_fields));
+                                std::move(slot).publish(timestamp);
+                                ++published;
+                            }
                             // Receive completion follows the last queued read. Publication separately
                             // follows the writes to this GPU source slot on the same CUDA stream.
                             if(output) {
@@ -509,10 +625,12 @@ private:
     std::unique_ptr<Subscription> input;
     std::jthread worker;
     bool armed = false, started = false;
-    bool block_output = false;
+    bool block_output = false, slice_output = false;
     std::uint64_t output_rows = 0, publisher_budget = 0, output_payload_bytes = 0;
+    std::uint64_t update_projections = 0, slice_size = 0, planes_revision = 0;
+    Planes planes{};
     std::unique_ptr<ReconstructionSettings> reconstruction;
-    std::atomic<std::uint64_t> processed{0}, published{0}, slot_wait_ns{0}, completed_scans{0};
+    std::atomic<std::uint64_t> processed{0}, published{0}, slot_wait_ns{0}, completed_scans{0}, published_bytes{0};
     std::atomic<std::uint64_t> reconstruct_ns{0};
     std::atomic<bool> finish_requested{false};
     std::string failure;
@@ -530,11 +648,13 @@ public:
             else if(get_name() == "Stop") device.stop_acquisition();
             else if(get_name() == "GetReconstruction")
                 return insert(CORBA::string_dup(device.reconstruction_settings().c_str()));
-            else if(get_name() == "ConfigureReconstruction" || get_name() == "ReconstructionForScan") {
+            else if(get_name() == "ConfigureReconstruction" || get_name() == "ReconstructionForScan" ||
+                    get_name() == "ConfigureSlices") {
                 Tango::DevString text;
                 extract(argument, text);
                 const auto result = get_name() == "ConfigureReconstruction" ?
-                    device.configure_reconstruction(text) : device.reconstruction_for_scan(text);
+                    device.configure_reconstruction(text) : get_name() == "ConfigureSlices" ?
+                    device.configure_slices(text) : device.reconstruction_for_scan(text);
                 return insert(CORBA::string_dup(result.c_str()));
             }
             else return insert(CORBA::string_dup(device.report().c_str()));
@@ -555,6 +675,7 @@ public:
         command_list.push_back(new Command("GetReconstruction", Tango::DEV_STRING));
         command_list.push_back(new Command("ConfigureReconstruction", Tango::DEV_STRING, Tango::DEV_STRING));
         command_list.push_back(new Command("ReconstructionForScan", Tango::DEV_STRING, Tango::DEV_STRING));
+        command_list.push_back(new Command("ConfigureSlices", Tango::DEV_STRING, Tango::DEV_STRING));
         install_ucx_commands(command_list);
     }
     void attribute_factory(std::vector<Tango::Attr *> &list) override { install_ucx_attributes(list); }

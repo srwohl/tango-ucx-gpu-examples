@@ -7,7 +7,9 @@ from nvidia import nvcomp
 
 from host_buffering import BlockTransfers, HostScanBuffer, memory_plan
 from pipeline_control import MAX_BATCH
-from reconstruction import SirtGPU, configuration, fbp_gpu, gridrec, postprocess, slice_blocks
+from reconstruction import (TOMOCUPY_ALGORITHMS, SirtGPU, configuration, fbp_gpu, gridrec, postprocess,
+                            slice_blocks)
+from streaming import SliceReconstructor, update_due, update_interval
 
 
 def array_at(pointer, shape, dtype, gpu):
@@ -58,6 +60,9 @@ class Processor:
             else:
                 self.reconstruct_ns = 0
                 self.buffer_plan = memory_plan(scan, self.reconstruction)
+                # The sinogram is a ring over scans: each projection replaces its angle.
+                self.ring_projections = 0
+                self.interval = update_interval(self.buffer_plan, scan["angles"])
                 if self.buffer_plan["sinogram_memory"] == "host":
                     self.host_buffer = HostScanBuffer(scan, cp, self.stream)
                     self.sinogram = self.host_buffer.data
@@ -65,6 +70,10 @@ class Processor:
                 else:
                     self.sinogram = cp.empty((scan["rows"], scan["angles"], scan["columns"]),
                                              dtype=cp.float32)
+                    if self.buffer_plan["output_mode"] == "slices":
+                        # Slice output keeps the projections filtered, as they arrive.
+                        self.slices = SliceReconstructor(self.sinogram.shape, self.theta, cp)
+                        self.slices.configure(self.reconstruction)
 
     def _pinned_scratch(self, nbytes, stream):
         released = self.released
@@ -116,6 +125,14 @@ class Processor:
         if old_size != new_size and hasattr(self, "sirt"):
             # Only keep scratch for the current block layout, not every live setting.
             del self.sirt
+        if hasattr(self, "tomocupy") and (old_size != new_size or any(
+                options.get(key) != self.reconstruction.get(key)
+                for key in ("algorithm", "filter", "center", "dtype"))):
+            # Its plans and grids are fixed to one method, filter, axis and chunk.
+            del self.tomocupy
+        if hasattr(self, "slices"):
+            # A new filter applies to the projections of this scan onwards.
+            self.slices.configure(options)
         self.buffer_plan = plan
         self.reconstruction = dict(options)
 
@@ -134,6 +151,15 @@ class Processor:
         elif options["algorithm"] == "fbp":
             fbp_gpu(sinogram, volume, self.theta, self.gpu, options["filter"],
                     filter_cutoff=options.get("filter_cutoff"))
+        elif options["algorithm"] in TOMOCUPY_ALGORITHMS:
+            if not hasattr(self, "tomocupy"):
+                from tomocupy_backend import TomocupyGPU
+
+                self.tomocupy = TomocupyGPU(
+                    options["algorithm"], self.theta, self.scan["columns"], self.buffer_plan["block_rows"],
+                    self.gpu, options["filter"], center=options.get("center"),
+                    dtype=options.get("dtype") or "float32")
+            self.tomocupy.run(sinogram, volume)
         else:
             raise ValueError(f"unknown GPU reconstruction algorithm: {options['algorithm']}")
 
@@ -175,7 +201,7 @@ class Processor:
             return
         for block in slice_blocks(self.scan["rows"], options.get("slices_per_block", 0)):
             sinogram, volume = self.sinogram[block], output[block]
-            if method in ("sirt", "fbp"):
+            if method in ("sirt", "fbp") or method in TOMOCUPY_ALGORITHMS:
                 self._gpu_reconstruct_block(sinogram, volume)
             elif method == "gridrec":
                 # CPU staging is limited to one block; keep its result until upload completes.
@@ -242,6 +268,19 @@ class Processor:
                     self.transfers.finish()
                 raise
 
+    def reconstruct_slices(self, output_pointer, planes):
+        """Backproject three planes from the filtered ring into a borrowed publisher slot."""
+        if not update_due(self.ring_projections, self.projections - 1, self.scan["angles"], self.interval):
+            raise ValueError("slices follow an update boundary of a full ring")
+        with self.stream:
+            size = self.buffer_plan["slice_size"]
+            output = array_at(output_pointer, (3, size, size), cp.float32, self.gpu)
+            begin = time.perf_counter_ns()
+            self.slices.backproject(self.sinogram, np.asarray(planes, np.float64).reshape(3, 3, 3), output)
+            # Wait for the kernel so the reported time is the backprojection, not its launch.
+            self.stream.synchronize()
+            self.reconstruct_ns += time.perf_counter_ns() - begin
+
     def consume(self, pointer, nbytes, output_pointer, kind, projection, theta):
         with self.stream:
             if self.role == "decompress":
@@ -291,9 +330,13 @@ class Processor:
                     raise ValueError("reconstruction expects all corrected projections in order")
                 if hasattr(self, "host_buffer"):
                     self.host_buffer.append(source, projection)
+                elif hasattr(self, "slices"):
+                    self.slices.store(self.sinogram, projection, source)
                 else:
                     cp.copyto(self.sinogram[:, projection, :], source)
-                if projection + 1 == self.scan["angles"] and self.buffer_plan["output_mode"] != "blocks":
+                self.ring_projections += 1
+                if self.buffer_plan["output_mode"] == "volume" and update_due(
+                        self.ring_projections, projection, self.scan["angles"], self.interval):
                     output = array_at(output_pointer,
                                       (self.scan["rows"], self.scan["columns"], self.scan["columns"]),
                                       cp.float32, self.gpu)

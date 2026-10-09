@@ -20,6 +20,11 @@
   canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}canvas:active{cursor:grabbing}
   canvas:focus-visible{outline:2px solid #69dfa7;outline-offset:-3px}
   #slice-image{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;display:block}
+  .inspection{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:16px 20px}
+  .slice-panel{min-width:0}.slice-panel canvas{height:220px;background:#070e14;cursor:crosshair}
+  .slice-panel label{display:flex;gap:8px;align-items:center;font-size:12px;margin-top:8px}
+  .slice-panel input{width:100%;min-width:0}.calibration input{width:70px}
+  @media(max-width:700px){.inspection{grid-template-columns:1fr}}
   [hidden]{display:none!important}
   .overlay{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;padding:25px;text-align:center;color:#9bafbf}
   .overlay[hidden]{display:none}.hint{position:absolute;bottom:16px;left:20px;color:#8299aa;font-size:12px;pointer-events:none}
@@ -41,12 +46,19 @@
   .reconstruction-settings h2{margin-bottom:8px}.reconstruction-settings fieldset{border:0;padding:0;margin:16px 0;display:flex;flex-wrap:wrap;gap:16px}
   .reconstruction-settings label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#a9bdcc}
   .reconstruction-settings input{font:inherit;color:#e4edf5;background:#20313e;border:1px solid #3c5363;border-radius:7px;padding:8px;width:150px}
+  .reconstruction-settings input[type="checkbox"]{width:auto}
   #pipeline-fields details{width:100%}#pipeline-advanced-fields{display:flex;flex-wrap:wrap;gap:16px;padding-top:16px}
   .pipeline-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
   #pipeline-stop{border-color:#c96b6b;background:#452a2b}#pipeline-image-info{margin:12px 0}
   .reconstruction-settings .error{color:#ff8b89}#recon-status{margin-top:10px}
   @media(max-width:900px){body{padding:20px}.pipeline,.foot{grid-template-columns:repeat(2,1fr)}.viewport{height:380px}}
   @media(max-width:540px){body{padding:12px}body>header{align-items:flex-start;gap:10px}h1{font-size:22px}.stage{padding:12px}.viewport{height:320px}.timeline{flex-wrap:wrap;gap:8px}#buffer{margin-left:0;width:100%}.hint{font-size:10px}}
+  #slice-stream{margin-bottom:24px}#slice-stream figure{margin:0;min-width:0}
+  #slice-stream img{width:100%;aspect-ratio:1;object-fit:contain;image-rendering:pixelated;background:#070e14;display:block}
+  #slice-stream figcaption{font:12px ui-monospace,monospace;color:#b9cbd7;margin-top:8px}
+  #slice-stream .plane{display:flex;flex-wrap:wrap;gap:18px;align-items:center;width:100%}#slice-stream .plane strong{width:60px;font-size:12px}
+  #slice-stream input[type="number"]{width:64px}#slice-stream textarea{display:block;width:min(100%,640px);margin:10px 0;font:12px ui-monospace,monospace;color:#e4edf5;background:#20313e;border:1px solid #3c5363;border-radius:7px;padding:8px}
+  body.slice-stream .volume:not(#slice-stream) .viewport,body.slice-stream .volume:not(#slice-stream) .view-controls:not(.calibration),body.slice-stream #inspection{display:none}
 </style>
 </head>
 <body>
@@ -55,7 +67,7 @@
   <div class="badge"><span id="dot" class="dot"></span><span id="phase">Connecting</span><button id="pipeline-stop" type="button" disabled>Stop acquisition</button></div>
 </header>
 <section class="pipeline" aria-label="Pipeline progress">
-  <div class="stage" data-role="source"><div class="eyebrow">01 / Compressed input</div><strong>0</strong><div class="small">frames published</div><p class="small detail">Waiting</p></div>
+  <div class="stage" data-role="source"><div class="eyebrow">01 / Detector input</div><strong>0</strong><div class="small">frames published</div><p class="small detail">Waiting</p></div>
   <div class="stage" data-role="decompress"><div class="eyebrow">02 / GPU decompress</div><strong>0</strong><div class="small">frames decoded</div><p class="small detail">Waiting</p></div>
   <div class="stage" data-role="correct"><div class="eyebrow">03 / GPU correct</div><strong>0</strong><div class="small">projections corrected</div><p class="small detail">Waiting</p></div>
   <div class="stage" data-role="reconstruct"><div class="eyebrow">04 / GPU reconstruct</div><strong>0</strong><div class="small">volumes reconstructed</div><p class="small detail">Waiting</p></div>
@@ -76,16 +88,17 @@
   <p class="small">Apply changes to the next scan. The current scan finishes with its existing settings.</p>
   <form id="recon-form">
     <fieldset id="recon-fields" disabled aria-label="Reconstruction parameters">
-      <label>Algorithm<select id="recon-algorithm"><option value="gridrec">GridRec · CPU</option><option value="fbp">FBP · GPU</option><option value="sirt">SIRT · GPU</option></select></label>
+      <label>Algorithm<select id="recon-algorithm"><option value="gridrec">GridRec · CPU</option><option value="fbp">FBP · GPU</option><option value="sirt">SIRT · GPU</option><option value="fourierrec">FourierRec · GPU (TomocuPy)</option><option value="lprec">LpRec · GPU (TomocuPy)</option><option value="linerec">LineRec · GPU (TomocuPy)</option></select></label>
       <label>Slices per block (0 = all)<input id="recon-slices_per_block" type="number" min="0" step="1" value="0" required></label>
-      <label data-recon-method="fbp gridrec">Filter<select id="recon-filter"><option value="ram-lak">Ram–Lak</option><option value="shepp-logan">Shepp–Logan</option><option value="hann">Hann</option><option value="parzen">Parzen</option></select></label>
+      <label data-recon-method="fbp gridrec fourierrec lprec linerec">Filter<select id="recon-filter"><option value="ram-lak">Ram–Lak</option><option value="shepp-logan">Shepp–Logan</option><option value="hann">Hann</option><option value="parzen">Parzen</option><option value="hamming" data-tomocupy>Hamming</option><option value="cosine" data-tomocupy>Cosine</option><option value="cosine2" data-tomocupy>Cosine²</option></select></label>
       <label data-recon-method="sirt">Iterations<input id="recon-iterations" type="number" min="1" step="1" value="40" required></label>
       <label data-recon-method="sirt">Relaxation<input id="recon-relaxation" type="number" min="0" max="2" step="any" value="1" required></label>
       <label data-recon-method="sirt">Minimum constraint<input id="recon-min_constraint" type="number" step="any" value="0" placeholder="None"></label>
       <label data-recon-method="sirt">Maximum constraint<input id="recon-max_constraint" type="number" step="any" placeholder="None"></label>
       <label data-recon-method="fbp" id="recon-cutoff-control">Filter cutoff<input id="recon-filter_cutoff" type="number" min="0" max="1" step="any" placeholder="Default (1)"></label>
       <label data-recon-method="gridrec">CPU threads<input id="recon-threads" type="number" min="1" step="1" value="4" required></label>
-      <label data-recon-method="gridrec">Rotation center (px)<input id="recon-center" type="number" min="0" step="any" placeholder="Detector midpoint"></label>
+      <label data-recon-method="gridrec fourierrec lprec linerec">Rotation center (px)<input id="recon-center" type="number" min="0" step="any" placeholder="Detector midpoint"></label>
+      <label data-recon-method="fourierrec lprec linerec">Precision<select id="recon-dtype"><option value="float32">float32</option><option value="float16">float16 · half the memory</option></select></label>
       <label>Gaussian FWHM (voxels)<input id="recon-gaussian_fwhm" type="number" min="0" step="any" value="0" required></label>
       <label>Scale factor<input id="recon-scale_factor" type="number" min="0" step="any" value="1" required></label>
     </fieldset>
@@ -93,24 +106,52 @@
     <p id="recon-status" class="small" role="status">Connecting to reconstruction controls…</p>
   </form>
 </section>
+<section class="volume" id="slice-stream" aria-label="Three slices reconstructed from the latest rotation" hidden>
+  <header><h2>Streamed slices</h2><span class="small" id="slice-stream-info">—</span></header>
+  <div class="inspection" id="slice-stream-images"></div>
+  <div class="view-controls" id="slice-stream-planes"></div>
+  <div class="view-controls">
+    <button id="slice-stream-reset" type="button">Orthogonal planes</button>
+    <details><summary class="small">Planes as JSON: pixel (i, j) samples origin + i·u + j·v in (z, y, x) voxels</summary>
+      <textarea id="slice-stream-json" rows="5" spellcheck="false" aria-label="Slice planes as JSON"></textarea>
+      <button id="slice-stream-apply" type="button">Apply planes</button></details>
+    <p id="slice-stream-status" class="small" role="status">A moved plane appears with the next update.</p>
+  </div>
+</section>
 <section class="volume" aria-label="3D reconstructed volume and time playback">
   <header><h2>Reconstructed volume</h2><span class="small"><span id="dimensions">—</span> · <span id="renderer-kind">Initializing</span></span></header>
   <div class="viewport">
-    <canvas id="volume" tabindex="0" aria-label="3D volume. Drag or use arrow keys to rotate. Scroll or use plus and minus to zoom."></canvas>
+    <canvas id="volume" tabindex="0" aria-label="3D volume. Drag or use arrow keys to rotate. Shift-drag to pan. Scroll or use plus and minus to zoom inside."></canvas>
     <img id="slice-image" alt="Reconstructed slice" hidden>
     <div id="waiting" class="overlay" role="status">Waiting for a reconstructed volume</div>
     <span class="hint" id="view-hint">Drag to rotate · Scroll to zoom · Interior appearance makes the shell transparent</span>
   </div>
   <div class="view-controls">
-    <label>View <select id="view-mode"><option value="volume">3D volume</option><option value="slice">Slice</option></select></label>
+    <label>View <select id="view-mode"><option value="volume">3D volume</option><option value="slice">Slice</option><option value="inspection" selected>Linked slices + 3D</option></select></label>
     <label class="volume-control">Appearance <select id="appearance"><option value="1">Interior</option><option value="0">Full density</option></select></label>
     <label class="volume-control">Opacity <input id="opacity" type="range" min="0.2" max="5" step="0.1" value="1.6"></label>
     <label class="volume-control">Threshold <input id="threshold" type="range" min="0" max="0.5" step="0.005" value="0.035"></label>
-    <label class="volume-control">Depth cut <input id="cut" type="range" min="0.01" max="1" step="0.01" value="1"></label>
+    <label class="volume-control"><input id="clip-enabled" type="checkbox"> Clip</label>
+    <label class="volume-control">Clip axis <select id="clip-axis"><option value="2">Z</option><option value="1">Y</option><option value="0">X</option></select></label>
+    <label class="volume-control">Keep <select id="clip-side"><option value="0">Below plane</option><option value="1">Above plane</option></select></label>
+    <label class="volume-control">Clip position <input id="cut" type="range" min="0" max="1" step="any" value="1"></label>
     <label class="slice-control" hidden>Axis <select id="slice-axis"><option value="0">Axial (Z)</option><option value="1">Coronal (Y)</option><option value="2">Sagittal (X)</option></select></label>
     <label class="slice-control" hidden>Slice <input id="slice-index" aria-label="Slice index" type="range" min="0" max="0" value="0" step="1"><output id="slice-position">—</output></label>
     <label class="slice-control" hidden>Contrast <select id="slice-window"><option value="0.004">Interior (0–0.004)</option><option value="0.01">Full range (0–0.01)</option></select></label>
+    <button id="focus-point" type="button">Focus selected point</button>
+    <button id="clip-point" type="button">Clip at selected point</button>
+    <label><input id="show-crosshair" type="checkbox" checked> Crosshair</label>
     <button id="reset" type="button">Reset view</button>
+  </div>
+  <div id="inspection" class="inspection" hidden></div>
+  <div class="view-controls calibration">
+    <label>Slice window low <input id="window-low" type="number" min="0" step="any" value="0"></label>
+    <label>Slice window high <input id="window-high" type="number" min="0" step="any" value="0.004"></label>
+    <label>Spacing X <input id="spacing-x" type="number" min="0" step="any" value="1"></label>
+    <label>Y <input id="spacing-y" type="number" min="0" step="any" value="1"></label>
+    <label>Z <input id="spacing-z" type="number" min="0" step="any" value="1"></label>
+    <label>Units <select id="spacing-unit"><option value="voxel">Uncalibrated voxels</option><option value="µm">µm</option><option value="mm">mm</option></select></label>
+    <output id="point-position">Select a point in linked slices</output>
   </div>
   <div class="transport">
     <div class="transport-row">
@@ -130,7 +171,7 @@
 <section class="foot" aria-label="Acquisition status">
   <div><span class="small">Displayed scan</span><strong id="scan">—</strong></div>
   <div><span class="small">Original frames archived</span><strong id="archived">0</strong></div>
-  <div><span class="small">Compressed bytes archived</span><strong id="bytes">0 B</strong></div>
+  <div><span class="small">Detector bytes archived</span><strong id="bytes">0 B</strong></div>
   <div><span class="small">Running time</span><strong id="elapsed">0.0 s</strong></div>
 </section>
 <p id="workload" class="small">Waiting for scan dimensions</p>
@@ -152,13 +193,16 @@ const pipelineFields={
   net_devices:{label:'Network devices (blank = automatic)',type:'text'},
   transport_batch:{label:'Transport frames per batch',type:'number',min:1,max:512,step:1},
   processing_batch:{label:'Decompression frames per batch',type:'number',min:1,max:512,step:1},
+  saving:{label:'Save detector archive and reconstruction',type:'checkbox'},
+  decompression:{label:'Enable GPU decompression',type:'checkbox'},
   processing_mode:{label:'Decompression mode',choices:['scalar','batched']},
   sinogram_memory:{label:'Sinogram memory',choices:['gpu','host']},
   reconstructors:{label:'Reconstructors (pull one scan each)',type:'number',min:1,max:8,step:1},
   receive_budget_mib:{label:'Receive budget (MiB)',type:'number',min:0,step:'any'},
   host_buffer_mib:{label:'Host input buffer (MiB)',type:'number',min:1,step:1},
   pinned_buffer_mib:{label:'Pinned staging buffer (MiB)',type:'number',min:1,step:1},
-  output_mode:{label:'Output delivery',choices:['volume','blocks']},
+  output_mode:{label:'Output delivery',choices:['volume','blocks','slices']},
+  update_projections:{label:'Projections per update (0 = once per scan)',type:'number',min:0,step:1},
   output_host_mib:{label:'Host output buffer (MiB)',type:'number',min:1,step:1},
   gpu:{label:'Source GPU',type:'number',min:0,step:1},
   decompress_gpu:{label:'Decompression GPU',type:'number',min:0,step:1},
@@ -176,8 +220,8 @@ for(const [key,spec] of Object.entries(pipelineFields)){
     input.type=spec.type;
     for(const property of ['min','max','step'])if(spec[property]!=null)input[property]=spec[property];
   }
-  input.required=key!=='net_devices';label.append(input);
-  if(['transport_batch','processing_batch','processing_mode'].includes(key))$('#pipeline-fields').insertBefore(label,$('#pipeline-advanced'));
+  input.required=key!=='net_devices' && spec.type!=='checkbox';label.append(input);
+  if(['saving','decompression','transport_batch','processing_batch','processing_mode'].includes(key))$('#pipeline-fields').insertBefore(label,$('#pipeline-advanced'));
   else $('#pipeline-advanced-fields').append(label);
 }
 function pipelineTransitionPending(){
@@ -188,12 +232,15 @@ function pipelineFormOptions(){
   const options={};
   for(const [key,spec] of Object.entries(pipelineFields)){
     const value=$(`#pipeline-${key}`).value;
-    options[key]=key==='net_devices'?(value.trim() || null):spec.type==='number'?Number(value):value;
+    options[key]=spec.type==='checkbox'?$(`#pipeline-${key}`).checked:key==='net_devices'?(value.trim() || null):spec.type==='number'?Number(value):value;
   }
   return options;
 }
 function fillPipelineOptions(options){
-  for(const key of Object.keys(pipelineFields))if(key in options)$(`#pipeline-${key}`).value=options[key] ?? '';
+  for(const [key,spec] of Object.entries(pipelineFields))if(key in options){
+    const input=$(`#pipeline-${key}`);
+    if(spec.type==='checkbox')input.checked=options[key];else input.value=options[key] ?? '';
+  }
 }
 function displayImageInformation(workload){
   if(!workload)return;
@@ -205,6 +252,7 @@ function displayImageInformation(workload){
   $('#pipeline-image-info').textContent=`${type}${name?` · ${name}`:''} · Image ${shape}, ${dtype} · ${workload.projections_per_volume ?? '—'} projections/volume · ${workload.detector_frame_bytes==null?'—':bytes(workload.detector_frame_bytes)} per frame · Volume ${volume}, ${workload.volume_bytes==null?'—':bytes(workload.volume_bytes)}`;
 }
 function displayPipelineState(state){
+  if(pipelineState && state.run_id<pipelineState.run_id)return;
   const rejected=pipelineState?.run_id===state.run_id && Boolean(state.error || state.restart_error) &&
     state.requested?.revision===state.active?.revision &&
     state.requested?.revision<pipelineState.requested?.revision;
@@ -215,9 +263,10 @@ function displayPipelineState(state){
     pipelineState.active?.revision!==state.active?.revision;
   pipelineState=state;
   if(!pipelineDirty && !pipelineSaving && changed){
-    const options=state.active?.options || {};
+    const options=state.requested?.options || state.active?.options || {};
     for(const key of Object.keys(pipelineFields)){
       const input=$(`#pipeline-${key}`);input.value=options[key] ?? '';
+      if(pipelineFields[key].type==='checkbox')input.checked=options[key] ?? true;
       input.placeholder=key in options?'':'Unavailable';
       if(['gpu','decompress_gpu','correct_gpu','reconstruct_gpu'].includes(key))input.max=state.gpu_count==null?'':state.gpu_count-1;
     }
@@ -298,6 +347,7 @@ $('#pipeline-auto-buffers').addEventListener('click',async()=>{
 $('#pipeline-current').addEventListener('click',()=>{
   if(!pipelineState?.active || pipelineSaving || reconSaving || pipelineRecommending)return;
   const state=pipelineState;pipelineDirty=false;pipelineError='';pipelineNotice='';pipelineState=null;displayPipelineState(state);
+  fillPipelineOptions(state.active.options);
   if(reconState){
     reconDirty=false;reconError='';fillReconstructionOptions(reconState.active?.options || reconState.requested.options,reconState);
     displayReconstructionState(reconState);
@@ -307,8 +357,14 @@ $('#pipeline-current').addEventListener('click',()=>{
 let reconState=null, reconDirty=false, reconSaving=false, reconError='';
 const reconDefaults={iterations:40,relaxation:1,min_constraint:0,max_constraint:null,
   threads:4,center:null,filter_cutoff:null,gaussian_fwhm:0,scale_factor:1,slices_per_block:0};
+const tomocupyMethods=['fourierrec','lprec','linerec'];
 function reconstructionFields(){
   const method=$('#recon-algorithm').value;
+  // Hamming and the cosine filters exist only in TomocuPy.
+  for(const option of document.querySelectorAll('#recon-filter [data-tomocupy]')){
+    option.hidden=option.disabled=!tomocupyMethods.includes(method);
+    if(option.disabled && option.selected)$('#recon-filter').value='ram-lak';
+  }
   for(const label of document.querySelectorAll('[data-recon-method]')){
     let visible=label.dataset.reconMethod.split(' ').includes(method);
     if(label.id==='recon-cutoff-control')visible=visible && ['hann','shepp-logan'].includes($('#recon-filter').value);
@@ -319,6 +375,7 @@ function reconstructionFields(){
 function fillReconstructionOptions(options,state){
     $('#recon-algorithm').value=options.algorithm;
     $('#recon-filter').value=options.filter || 'ram-lak';
+    $('#recon-dtype').value=options.dtype || 'float32';
     for(const [key,fallback] of Object.entries(reconDefaults)){
       const value=options[key] ?? (['min_constraint','max_constraint','center','filter_cutoff'].includes(key) && key in options ? null : fallback);
       $(`#recon-${key}`).value=value ?? '';
@@ -363,6 +420,7 @@ $('#recon-form').addEventListener('submit',async event=>{
     if(!input.disabled)options[key]=input.value===''?null:Number(input.value);
   }
   if(method!=='sirt')options.filter=$('#recon-filter').value;
+  if(tomocupyMethods.includes(method))options.dtype=$('#recon-dtype').value;
   reconSaving=true;reconError='';displayReconstructionState(reconState);
   try{
     const response=await fetch('/api/reconstruction',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(options)});
@@ -377,14 +435,17 @@ reconstructionFields();
 
 // Both renderers share camera controls and keep one volume texture on the GPU.
 class VolumeControls {
-  constructor(canvas){this.canvas=canvas;this.yaw=.55;this.pitch=.4;this.distance=1.25;}
+  constructor(canvas){this.canvas=canvas;this.yaw=.55;this.pitch=.4;this.distance=1.25;this.target=[0,0,0];}
   attachControls(){
     const canvas=this.canvas;
     let pointer = null;
     canvas.addEventListener('pointerdown',e=>{pointer={id:e.pointerId,x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId);canvas.focus();});
     canvas.addEventListener('pointermove',e=>{
       if(!pointer || pointer.id!==e.pointerId)return;
-      this.yaw-=(e.clientX-pointer.x)*.008; this.pitch+=(e.clientY-pointer.y)*.008;
+      if(e.shiftKey){
+        const basis=this.camera(),scale=this.distance*1.44/Math.max(1,canvas.clientHeight);
+        this.target=this.target.map((value,index)=>value-(e.clientX-pointer.x)*scale*basis.right[index]+(e.clientY-pointer.y)*scale*basis.up[index]);
+      }else{this.yaw-=(e.clientX-pointer.x)*.008; this.pitch+=(e.clientY-pointer.y)*.008;}
       this.pitch=Math.max(-1.45,Math.min(1.45,this.pitch));
       pointer={id:e.pointerId,x:e.clientX,y:e.clientY};this.draw();
     });
@@ -403,8 +464,20 @@ class VolumeControls {
     });
     this.observer=new ResizeObserver(()=>this.draw());this.observer.observe(canvas);
   }
-  reset(){this.yaw=.55;this.pitch=.4;this.distance=1.25;this.draw();}
-  zoom(delta){this.distance=Math.max(1,Math.min(5,this.distance*Math.exp(delta)));this.draw();}
+  reset(){this.yaw=.55;this.pitch=.4;this.distance=1.25;this.target=[0,0,0];this.draw();}
+  camera(){
+    const sine=Math.sin(this.yaw),cosine=Math.cos(this.yaw),pitch=Math.sin(this.pitch),vertical=Math.cos(this.pitch);
+    const outward=[sine*vertical,pitch,cosine*vertical];
+    return {eye:this.target.map((value,index)=>value+outward[index]*this.distance),
+      forward:outward.map(value=>-value),right:[cosine,0,-sine],up:[-sine*pitch,vertical,-cosine*pitch]};
+  }
+  point(){return this.extent.map((value,index)=>((inspectionPoint[2-index]+.5)/this.shape[2-index]*2-1)*value);}
+  geometry(shape){
+    this.shape=[...shape];
+    const sizes=[...shape].reverse().map((size,index)=>size*voxelSpacing[index]),scale=Math.max(...sizes);
+    this.extent=sizes.map(size=>size/(2*scale));
+  }
+  zoom(delta){this.distance=Math.max(.015,Math.min(5,this.distance*Math.exp(delta)));this.draw();}
   dispose(){this.observer?.disconnect();}
 }
 
@@ -424,10 +497,12 @@ class WebGLVolumeRenderer extends VolumeControls {
       in vec2 uv;
       out vec4 color;
       uniform sampler3D volume;
-      uniform vec3 extent, eye, right, up;
+      uniform vec3 extent, eye, right, up, forward, point;
+      uniform float clipAxis, clipSide, clipEnabled, crosshair;
       uniform float aspect, opacity, threshold, cut, appearance;
+      float decodeValue(vec4 encoded){return dot(encoded.rg,vec2(1./257.,256./257.));}
       vec4 classifyVoxel(ivec3 cell){
-        float value=texelFetch(volume,clamp(cell,ivec3(0),textureSize(volume,0)-1),0).r;
+        float value=decodeValue(texelFetch(volume,clamp(cell,ivec3(0),textureSize(volume,0)-1),0));
         float shell=smoothstep(.45,.7,value);
         float feature=smoothstep(.22,.29,value);
         float visible=smoothstep(max(threshold,.065),max(threshold,.065)+.025,value);
@@ -439,9 +514,9 @@ class WebGLVolumeRenderer extends VolumeControls {
         // Reconstruction blur puts feature-range values along the bright shell.
         // Treat its two-voxel neighborhood as shell too, rather than as features.
         vec3 delta=2./vec3(textureSize(volume,0));
-        float nearby=max(max(texture(volume,coord+vec3(delta.x,0,0)).r,texture(volume,coord-vec3(delta.x,0,0)).r),
-                     max(max(texture(volume,coord+vec3(0,delta.y,0)).r,texture(volume,coord-vec3(0,delta.y,0)).r),
-                         max(texture(volume,coord+vec3(0,0,delta.z)).r,texture(volume,coord-vec3(0,0,delta.z)).r)));
+        float nearby=max(max(decodeValue(texture(volume,coord+vec3(delta.x,0,0))),decodeValue(texture(volume,coord-vec3(delta.x,0,0)))),
+                     max(max(decodeValue(texture(volume,coord+vec3(0,delta.y,0))),decodeValue(texture(volume,coord-vec3(0,delta.y,0)))),
+                         max(decodeValue(texture(volume,coord+vec3(0,0,delta.z))),decodeValue(texture(volume,coord-vec3(0,0,delta.z))))));
         if(nearby>.55)return vec4(vec3(.7,.79,.87)*.003,.003);
         // Classify before interpolation: interpolating raw shell intensity first
         // invents intermediate intensities and highlights false interior rings.
@@ -455,9 +530,13 @@ class WebGLVolumeRenderer extends VolumeControls {
       }
       void main(){
         vec3 bg=vec3(.025,.045,.065)*(1.2-.25*length(uv));
-        vec3 direction=normalize(normalize(-eye)+(.72*uv.x*aspect)*right+(.72*uv.y)*up);
+        vec3 direction=normalize(forward+(.72*uv.x*aspect)*right+(.72*uv.y)*up);
         vec3 low=-extent, high=extent;
-        high.z=mix(-extent.z,extent.z,cut);
+        int axis=int(clipAxis);
+        if(clipEnabled>.5){
+          if(clipSide<.5)high[axis]=mix(-extent[axis],extent[axis],cut);
+          else low[axis]=mix(-extent[axis],extent[axis],cut);
+        }
         vec3 safeDirection=vec3(direction.x>=0.?1.:-1.,direction.y>=0.?1.:-1.,direction.z>=0.?1.:-1.)*max(abs(direction),vec3(.00001));
         vec3 a=(low-eye)/safeDirection, b=(high-eye)/safeDirection;
         vec3 nearPlane=min(a,b), farPlane=max(a,b);
@@ -469,7 +548,7 @@ class WebGLVolumeRenderer extends VolumeControls {
         for(int i=0;i<256;i++){
           vec3 point=eye+direction*(start+(float(i)+.5)*stepSize);
           vec3 coord=(point+extent)/(2.*extent);
-          float value=texture(volume,coord).r;
+          float value=decodeValue(texture(volume,coord));
           float density=max(value-threshold,0.);
           vec3 tint=mix(vec3(.25,.60,.68),vec3(.96,.98,1.),smoothstep(.08,.8,value));
           if(appearance>.5){
@@ -481,7 +560,13 @@ class WebGLVolumeRenderer extends VolumeControls {
           sum.a+=(1.-sum.a)*alpha;
           if(sum.a>.985)break;
         }
-        color=vec4(sum.rgb+(1.-sum.a)*bg,1.);
+        vec3 result=sum.rgb+(1.-sum.a)*bg;
+        float markerDepth=dot(point-eye,forward)/dot(direction,forward);
+        vec3 marker=eye+direction*markerDepth-point;
+        vec2 offset=vec2(dot(marker,right),dot(marker,up));
+        float markerScale=max(markerDepth*.002,.00001);
+        if(crosshair>.5 && markerDepth>0. && ((abs(offset.x)<markerScale && abs(offset.y)<markerScale*8.) || (abs(offset.y)<markerScale && abs(offset.x)<markerScale*8.)))result=vec3(.3,1.,.7);
+        color=vec4(result,1.);
       }`;
     const shader = (type, source) => {
       const value = gl.createShader(type);
@@ -499,7 +584,7 @@ class WebGLVolumeRenderer extends VolumeControls {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
     const position = gl.getAttribLocation(this.program, 'position');
     gl.enableVertexAttribArray(position); gl.vertexAttribPointer(position,2,gl.FLOAT,false,0,0);
-    this.uniforms = Object.fromEntries(['extent','eye','right','up','aspect','opacity','threshold','cut','appearance'].map(n=>[n,gl.getUniformLocation(this.program,n)]));
+    this.uniforms = Object.fromEntries(['extent','eye','right','up','forward','point','clipAxis','clipSide','clipEnabled','crosshair','aspect','opacity','threshold','cut','appearance'].map(n=>[n,gl.getUniformLocation(this.program,n)]));
     this.texture = gl.createTexture(); gl.bindTexture(gl.TEXTURE_3D,this.texture);
     gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
@@ -515,10 +600,9 @@ class WebGLVolumeRenderer extends VolumeControls {
     const gl=this.gl, [z,y,x]=shape;
     if(Math.max(x,y,z)>gl.getParameter(gl.MAX_3D_TEXTURE_SIZE))throw new Error('Volume dimensions exceed this browser’s 3D texture limit.');
     gl.bindTexture(gl.TEXTURE_3D,this.texture);
-    gl.texImage3D(gl.TEXTURE_3D,0,gl.R8,x,y,z,0,gl.RED,gl.UNSIGNED_BYTE,data);
+    gl.texImage3D(gl.TEXTURE_3D,0,gl.RG8,x,y,z,0,gl.RG,gl.UNSIGNED_BYTE,new Uint8Array(data.buffer,data.byteOffset,data.byteLength));
     if(gl.getError()!==gl.NO_ERROR)throw new Error('The browser could not allocate the 3D volume texture.');
-    const scale=Math.max(x,y,z);
-    this.extent=[x/(2*scale),y/(2*scale),z/(2*scale)];this.draw();
+    this.geometry(shape);this.draw();
   }
   draw(){
     if(!this.extent || this.gl.isContextLost())return;
@@ -526,10 +610,14 @@ class WebGLVolumeRenderer extends VolumeControls {
     const width=Math.max(1,Math.round(canvas.clientWidth*ratio)),height=Math.max(1,Math.round(canvas.clientHeight*ratio));
     if(canvas.width!==width || canvas.height!==height){canvas.width=width;canvas.height=height;}
     gl.viewport(0,0,width,height);gl.useProgram(this.program);
-    const s=Math.sin(this.yaw),c=Math.cos(this.yaw),p=Math.sin(this.pitch),q=Math.cos(this.pitch);
+    const camera=this.camera();
     gl.uniform3fv(this.uniforms.extent,this.extent);
-    gl.uniform3fv(this.uniforms.eye,[s*q*this.distance,p*this.distance,c*q*this.distance]);
-    gl.uniform3fv(this.uniforms.right,[c,0,-s]);gl.uniform3fv(this.uniforms.up,[-s*p,q,-c*p]);
+    for(const name of ['eye','right','up','forward'])gl.uniform3fv(this.uniforms[name],camera[name]);
+    gl.uniform3fv(this.uniforms.point,this.point());
+    gl.uniform1f(this.uniforms.clipAxis,Number($('#clip-axis').value));
+    gl.uniform1f(this.uniforms.clipSide,Number($('#clip-side').value));
+    gl.uniform1f(this.uniforms.clipEnabled,$('#clip-enabled').checked?1:0);
+    gl.uniform1f(this.uniforms.crosshair,$('#show-crosshair').checked?1:0);
     gl.uniform1f(this.uniforms.aspect,width/height);
     for(const name of ['opacity','threshold','cut','appearance'])gl.uniform1f(this.uniforms[name],Number($('#'+name).value));
     gl.drawArrays(gl.TRIANGLES,0,3);
@@ -550,13 +638,15 @@ class WebGPUVolumeRenderer extends VolumeControls {
           // Aspect, opacity, threshold, depth cut; vec4 keeps uniform alignment explicit.
           view: vec4f,
           appearance: vec4f,
+          forward: vec4f, point: vec4f, inspection: vec4f,
         }
         @group(0) @binding(0) var<uniform> params: Params;
         @group(0) @binding(1) var volumeSampler: sampler;
         @group(0) @binding(2) var volume: texture_3d<f32>;
+        fn decodeValue(encoded: vec4f) -> f32 {return dot(encoded.rg,vec2f(1./257.,256./257.));}
         fn classifyVoxel(cell: vec3i) -> vec4f {
           let size=vec3i(textureDimensions(volume));
-          let value=textureLoad(volume,clamp(cell,vec3i(0),size-vec3i(1)),0).r;
+          let value=decodeValue(textureLoad(volume,clamp(cell,vec3i(0),size-vec3i(1)),0));
           let shell=smoothstep(.45,.7,value);
           let feature=smoothstep(.22,.29,value);
           let visible=smoothstep(max(params.view.z,.065),max(params.view.z,.065)+.025,value);
@@ -566,9 +656,9 @@ class WebGPUVolumeRenderer extends VolumeControls {
         }
         fn interiorSample(coord: vec3f) -> vec4f {
           let delta=2./vec3f(textureDimensions(volume));
-          let nearby=max(max(textureSampleLevel(volume,volumeSampler,coord+vec3f(delta.x,0,0),0.).r,textureSampleLevel(volume,volumeSampler,coord-vec3f(delta.x,0,0),0.).r),
-                     max(max(textureSampleLevel(volume,volumeSampler,coord+vec3f(0,delta.y,0),0.).r,textureSampleLevel(volume,volumeSampler,coord-vec3f(0,delta.y,0),0.).r),
-                         max(textureSampleLevel(volume,volumeSampler,coord+vec3f(0,0,delta.z),0.).r,textureSampleLevel(volume,volumeSampler,coord-vec3f(0,0,delta.z),0.).r)));
+          let nearby=max(max(decodeValue(textureSampleLevel(volume,volumeSampler,coord+vec3f(delta.x,0,0),0.)),decodeValue(textureSampleLevel(volume,volumeSampler,coord-vec3f(delta.x,0,0),0.))),
+                     max(max(decodeValue(textureSampleLevel(volume,volumeSampler,coord+vec3f(0,delta.y,0),0.)),decodeValue(textureSampleLevel(volume,volumeSampler,coord-vec3f(0,delta.y,0),0.))),
+                         max(decodeValue(textureSampleLevel(volume,volumeSampler,coord+vec3f(0,0,delta.z),0.)),decodeValue(textureSampleLevel(volume,volumeSampler,coord-vec3f(0,0,delta.z),0.)))));
           if(nearby>.55){return vec4f(vec3f(.7,.79,.87)*.003,.003);}
           let cell=coord*vec3f(textureDimensions(volume))-.5;
           let base=vec3i(floor(cell));let f=fract(cell);
@@ -594,9 +684,14 @@ class WebGPUVolumeRenderer extends VolumeControls {
           let extent=params.extent.xyz;
           let eye=params.eye.xyz;
           let bg=vec3f(.025,.045,.065)*(1.2-.25*length(uv));
-          let direction=normalize(normalize(-eye)+(.72*uv.x*params.view.x)*params.right.xyz+(.72*uv.y)*params.up.xyz);
-          let low=-extent;
-          let high=vec3f(extent.xy,mix(-extent.z,extent.z,params.view.w));
+          let direction=normalize(params.forward.xyz+(.72*uv.x*params.view.x)*params.right.xyz+(.72*uv.y)*params.up.xyz);
+          var low=-extent;
+          var high=extent;
+          let axis=u32(params.inspection.x);
+          if(params.inspection.w>.5){
+            if(params.inspection.y<.5){high[axis]=mix(-extent[axis],extent[axis],params.view.w);}
+            else{low[axis]=mix(-extent[axis],extent[axis],params.view.w);}
+          }
           let safeDirection=select(vec3f(-1.),vec3f(1.),direction>=vec3f(0.))*max(abs(direction),vec3f(.00001));
           let a=(low-eye)/safeDirection;
           let b=(high-eye)/safeDirection;
@@ -612,7 +707,7 @@ class WebGPUVolumeRenderer extends VolumeControls {
             let point=eye+direction*(start+(f32(i)+.5)*stepSize);
             let coord=(point+extent)/(2.*extent);
             // Explicit LOD allows sampling inside the ray's nonuniform early exit.
-            let value=textureSampleLevel(volume,volumeSampler,coord,0.).r;
+            let value=decodeValue(textureSampleLevel(volume,volumeSampler,coord,0.));
             var density=max(value-params.view.z,0.);
             var tint=mix(vec3f(.25,.60,.68),vec3f(.96,.98,1.),smoothstep(.08,.8,value));
             if(params.appearance.x>.5){
@@ -624,7 +719,13 @@ class WebGPUVolumeRenderer extends VolumeControls {
             coverage+=(1.-coverage)*alpha;
             if(coverage>.985){break;}
           }
-          return vec4f(accumulated+(1.-coverage)*bg,1.);
+          var result=accumulated+(1.-coverage)*bg;
+          let markerDepth=dot(params.point.xyz-eye,params.forward.xyz)/dot(direction,params.forward.xyz);
+          let marker=eye+direction*markerDepth-params.point.xyz;
+          let offset=vec2f(dot(marker,params.right.xyz),dot(marker,params.up.xyz));
+          let markerScale=max(markerDepth*.002,.00001);
+          if(params.inspection.z>.5 && markerDepth>0. && ((abs(offset.x)<markerScale && abs(offset.y)<markerScale*8.) || (abs(offset.y)<markerScale && abs(offset.x)<markerScale*8.))){result=vec3f(.3,1.,.7);}
+          return vec4f(result,1.);
         }`});
       const pipeline=await device.createRenderPipelineAsync({
         label:'Volume renderer',layout:'auto',
@@ -641,8 +742,8 @@ class WebGPUVolumeRenderer extends VolumeControls {
     this.context=canvas.getContext('webgpu');
     if(!this.context)throw new Error('WebGPU canvas is unavailable.');
     this.context.configure({device,format,alphaMode:'opaque'});
-    this.uniformBuffer=device.createBuffer({size:96,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
-    this.params=new Float32Array(24);
+    this.uniformBuffer=device.createBuffer({size:144,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+    this.params=new Float32Array(36);
     this.sampler=device.createSampler({minFilter:'linear',magFilter:'linear'});
     this.attachControls();
     device.lost.then(info=>{if(!this.disposed){this.lost=true;switchToWebGL(this,info.message);}});
@@ -662,7 +763,7 @@ class WebGPUVolumeRenderer extends VolumeControls {
         // Reuse the allocation for equal shapes; release it before changing shape.
         this.texture?.destroy();
         this.texture=device.createTexture({label:'Current volume',size:[x,y,z],dimension:'3d',
-          format:'r8unorm',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
+          format:'rg8unorm',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
         this.bindGroup=device.createBindGroup({layout:this.pipeline.getBindGroupLayout(0),entries:[
           {binding:0,resource:{buffer:this.uniformBuffer}},
           {binding:1,resource:this.sampler},
@@ -671,14 +772,13 @@ class WebGPUVolumeRenderer extends VolumeControls {
         this.shape=[...shape];
       }
       // writeTexture accepts tightly packed rows, including widths not divisible by 256.
-      device.queue.writeTexture({texture:this.texture},data,{bytesPerRow:x,rowsPerImage:y},[x,y,z]);
+      device.queue.writeTexture({texture:this.texture},data,{bytesPerRow:x*2,rowsPerImage:y},[x,y,z]);
     }finally{
       const error=await device.popErrorScope();
       if(error)throw new Error(error.message);
     }
     if(this.lost || uploadID!==this.uploadID)return;
-    const scale=Math.max(x,y,z);
-    this.extent=[x/(2*scale),y/(2*scale),z/(2*scale)];this.draw();
+    this.geometry(shape);this.draw();
   }
   draw(){
     if(!this.extent || this.lost || this.disposed)return;
@@ -688,10 +788,12 @@ class WebGPUVolumeRenderer extends VolumeControls {
       const width=Math.min(limit,Math.max(1,Math.round(canvas.clientWidth*ratio)));
       const height=Math.min(limit,Math.max(1,Math.round(canvas.clientHeight*ratio)));
       if(canvas.width!==width || canvas.height!==height){canvas.width=width;canvas.height=height;}
-      const s=Math.sin(this.yaw),c=Math.cos(this.yaw),p=Math.sin(this.pitch),q=Math.cos(this.pitch);
+      const camera=this.camera();
       this.params.set(this.extent,0);
-      this.params.set([s*q*this.distance,p*this.distance,c*q*this.distance],4);
-      this.params.set([c,0,-s],8);this.params.set([-s*p,q,-c*p],12);
+      this.params.set(camera.eye,4);
+      this.params.set(camera.right,8);this.params.set(camera.up,12);
+      this.params.set(camera.forward,24);this.params.set(this.point(),28);
+      this.params.set([Number($('#clip-axis').value),Number($('#clip-side').value),$('#show-crosshair').checked?1:0,$('#clip-enabled').checked?1:0],32);
       this.params.set([width/height,Number($('#opacity').value),Number($('#threshold').value),Number($('#cut').value)],16);
       this.params[20]=Number($('#appearance').value);
       device.queue.writeBuffer(this.uniformBuffer,0,this.params);
@@ -713,12 +815,14 @@ class WebGPUVolumeRenderer extends VolumeControls {
 let renderer=null, frames=[], selected=null, displayed=null, followLive=true, playing=false;
 let phase='waiting', timer=null, controller=null, requestID=0, busy=false;
 let sliceController=null, sliceRequestID=0, sliceURL=null, sliceShape=null;
+let inspectionPoint=[0,0,0], voxelSpacing=[1,1,1], spacingUnit='voxel', inspectionData=null, inspectionShape=null;
 let displayMax=.01, inputDefaultsSet=false, defaultAppearance=1, defaultSliceWindow=.004;
 function updateDisplayRange(view, workload){
   const maximum=view.display_max ?? .01;
   if(maximum!==displayMax){
     const fraction=Number($('#slice-window').value)/displayMax;
     displayMax=maximum;
+    $('#window-high').value=maximum*.4;
     const options=$('#slice-window').options;
     options[0].value=String(maximum*.4);options[0].textContent=`Low range (0–${(maximum*.4).toPrecision(3)})`;
     options[1].value=String(maximum);options[1].textContent=`Full range (0–${maximum.toPrecision(3)})`;
@@ -730,7 +834,7 @@ function updateDisplayRange(view, workload){
     inputDefaultsSet=true;
     if(workload.source.type==='hdf5'){
       defaultAppearance=0;defaultSliceWindow=maximum;
-      $('#appearance').value='0';$('#slice-window').value=String(maximum);
+      $('#appearance').value='0';$('#slice-window').value=String(maximum);$('#window-high').value=maximum;
       renderer?.draw();updateSlice();
     }
   }
@@ -738,9 +842,11 @@ function updateDisplayRange(view, workload){
 async function updateSlice(center=false){
   const slicing=$('#view-mode').value==='slice';
   $('#volume').hidden=slicing;$('#slice-image').hidden=!slicing;
+  $('#inspection').hidden=$('#view-mode').value!=='inspection';
+  drawInspection();
   for(const control of document.querySelectorAll('.volume-control'))control.hidden=slicing;
   for(const control of document.querySelectorAll('.slice-control'))control.hidden=!slicing;
-  $('#view-hint').textContent=slicing?'Choose an axis and slice to inspect the interior. Contrast changes the display only.':'Drag to rotate · Scroll to zoom · Interior appearance makes the shell transparent';
+  $('#view-hint').textContent=slicing?'Choose an axis and slice to inspect the interior. Contrast changes the display only.':'Drag to rotate · Shift-drag to pan · Scroll to enter volume · Focus selected point';
   sliceController?.abort();const id=++sliceRequestID;
   if(!slicing){renderer?.draw();return;}
   if(!displayed)return;
@@ -749,17 +855,22 @@ async function updateSlice(center=false){
   $('#slice-index').max=size-1;
   if(center || shapeChanged)$('#slice-index').value=Math.floor(size/2);
   sliceShape=[...frame.shape];
-  const index=Number($('#slice-index').value),windowMax=$('#slice-window').value;
+  const index=Number($('#slice-index').value),windowMax=Number($('#window-high').value),windowMin=Number($('#window-low').value);
+  if(!Number.isFinite(windowMin) || !Number.isFinite(windowMax) || windowMin<0 || windowMax<=windowMin || windowMax>displayMax)return;
   $('#slice-position').textContent=`${index+1} / ${size}`;
   sliceController=new AbortController();
   try{
-    const response=await fetch(`/api/slice?v=${frame.version}&axis=${axis}&index=${index}&window_max=${windowMax}`,{cache:'no-store',signal:sliceController.signal});
+    const response=await fetch(`/api/slice?v=${frame.version}&axis=${axis}&index=${index}&window_max=${windowMax}&window_min=${windowMin}`,{cache:'no-store',signal:sliceController.signal});
     if(!response.ok)throw new Error(response.status===410?'This scan has expired. Choose a newer time or follow live.':'Slice unavailable.');
     const blob=await response.blob();
     if(id!==sliceRequestID)return;
     const url=URL.createObjectURL(blob);
     $('#slice-image').src=url;
-    $('#slice-image').alt=`Scan ${frame.scan_id}, ${['axial','coronal','sagittal'][axis]} slice ${index+1} of ${size}, display range 0–${windowMax}`;
+    $('#slice-image').alt=`Scan ${frame.scan_id}, ${['axial','coronal','sagittal'][axis]} slice ${index+1} of ${size}, display range ${windowMin}–${windowMax}`;
+    const horizontal=axis===2?1:2,vertical=axis===0?1:0;
+    const width=frame.shape[horizontal]*voxelSpacing[2-horizontal],height=frame.shape[vertical]*voxelSpacing[2-vertical];
+    const scale=Math.min($('#slice-image').parentElement.clientWidth/width,$('#slice-image').parentElement.clientHeight/height);
+    $('#slice-image').style.width=width*scale+'px';$('#slice-image').style.height=height*scale+'px';$('#slice-image').style.margin='auto';
     if(sliceURL)URL.revokeObjectURL(sliceURL);sliceURL=url;
   }catch(error){
     if(error.name!=='AbortError' && id===sliceRequestID){
@@ -767,6 +878,67 @@ async function updateSlice(center=false){
     }
   }
 }
+const slicePanels=[];
+for(const [axis,title] of ['XY · Z slice','XZ · Y slice','YZ · X slice'].entries()){
+  const panel=document.createElement('div');panel.className='slice-panel';
+  const heading=document.createElement('h2');heading.textContent=title;
+  const canvas=document.createElement('canvas');canvas.tabIndex=0;canvas.setAttribute('aria-label',title+'; click to select a voxel');
+  const label=document.createElement('label'),slider=document.createElement('input'),output=document.createElement('output');
+  slider.type='range';slider.min=0;slider.max=0;slider.step=1;slider.value=0;slider.setAttribute('aria-label',title+' index');
+  label.append(slider,output);panel.append(heading,canvas,label);$('#inspection').append(panel);
+  const horizontal=axis===2?1:2,vertical=axis===0?1:0;
+  slider.addEventListener('input',()=>{inspectionPoint[axis]=Number(slider.value);drawInspection();renderer?.draw();});
+  canvas.addEventListener('pointerdown',event=>{
+    if(!inspectionShape)return;
+    const rect=canvas.getBoundingClientRect(),size=slicePanels[axis].imageSize;
+    const scale=Math.min(rect.width/size[0],rect.height/size[1]),width=size[0]*scale,height=size[1]*scale;
+    const coordinateX=event.clientX-rect.left-(rect.width-width)/2,coordinateY=event.clientY-rect.top-(rect.height-height)/2;
+    if(coordinateX<0 || coordinateX>=width || coordinateY<0 || coordinateY>=height)return;
+    inspectionPoint[horizontal]=Math.min(inspectionShape[horizontal]-1,Math.floor(coordinateX/width*inspectionShape[horizontal]));
+    inspectionPoint[vertical]=Math.min(inspectionShape[vertical]-1,Math.floor(coordinateY/height*inspectionShape[vertical]));
+    drawInspection();renderer?.draw();
+  });
+  slicePanels.push({canvas,slider,output,horizontal,vertical,imageSize:[1,1]});
+}
+function drawInspection(){
+  if(!inspectionData || !inspectionShape){
+    for(const panel of slicePanels)panel.canvas.getContext('2d').clearRect(0,0,panel.canvas.width,panel.canvas.height);
+    $('#point-position').textContent='Select a point in linked slices';
+    return;
+  }
+  const low=Number($('#window-low').value),high=Number($('#window-high').value);
+  if(!Number.isFinite(low) || !Number.isFinite(high) || low<0 || high<=low || high>displayMax){
+    $('#point-position').textContent='Window must satisfy 0 ≤ low < high ≤ '+displayMax;return;
+  }
+  for(const [axis,panel] of slicePanels.entries()){
+    panel.slider.max=inspectionShape[axis]-1;panel.slider.value=inspectionPoint[axis];
+    panel.output.textContent=(inspectionPoint[axis]+1)+' / '+inspectionShape[axis];
+    const width=inspectionShape[panel.horizontal],height=inspectionShape[panel.vertical];
+    const image=document.createElement('canvas');image.width=width;image.height=height;
+    const context=image.getContext('2d'),pixels=context.createImageData(width,height);
+    for(let row=0;row<height;row++)for(let column=0;column<width;column++){
+      const position=[...inspectionPoint];position[panel.horizontal]=column;position[panel.vertical]=row;
+      const value=inspectionData[(position[0]*inspectionShape[1]+position[1])*inspectionShape[2]+position[2]]*displayMax/65535;
+      const gray=Math.max(0,Math.min(255,(value-low)/(high-low)*255)),offset=(row*width+column)*4;
+      pixels.data[offset]=gray;pixels.data[offset+1]=gray;pixels.data[offset+2]=gray;pixels.data[offset+3]=255;
+    }
+    context.putImageData(pixels,0,0);
+    const physicalWidth=width*voxelSpacing[2-panel.horizontal],physicalHeight=height*voxelSpacing[2-panel.vertical];
+    panel.imageSize=[physicalWidth,physicalHeight];
+    const canvas=panel.canvas,ratio=devicePixelRatio || 1;
+    canvas.width=Math.max(1,Math.round(canvas.clientWidth*ratio));canvas.height=Math.max(1,Math.round(canvas.clientHeight*ratio));
+    const target=canvas.getContext('2d'),scale=Math.min(canvas.width/physicalWidth,canvas.height/physicalHeight);
+    const renderedWidth=physicalWidth*scale,renderedHeight=physicalHeight*scale,left=(canvas.width-renderedWidth)/2,top=(canvas.height-renderedHeight)/2;
+    target.imageSmoothingEnabled=false;target.drawImage(image,left,top,renderedWidth,renderedHeight);
+    if($('#show-crosshair').checked){
+      const coordinateX=left+(inspectionPoint[panel.horizontal]+.5)/width*renderedWidth,coordinateY=top+(inspectionPoint[panel.vertical]+.5)/height*renderedHeight;
+      target.strokeStyle='#69dfa7';target.lineWidth=ratio;target.beginPath();target.moveTo(coordinateX,top);target.lineTo(coordinateX,top+renderedHeight);target.moveTo(left,coordinateY);target.lineTo(left+renderedWidth,coordinateY);target.stroke();
+    }
+  }
+  const unit=$('#spacing-unit').value,value=inspectionData[(inspectionPoint[0]*inspectionShape[1]+inspectionPoint[1])*inspectionShape[2]+inspectionPoint[2]]*displayMax/65535;
+  $('#point-position').textContent=['X','Y','Z'].map((axis,index)=>axis+' '+(inspectionPoint[2-index]*voxelSpacing[index]).toFixed(2)).join(' · ')+' '+unit+' · intensity ≈ '+value.toPrecision(5);
+}
+new ResizeObserver(()=>drawInspection()).observe($('#inspection'));
 // The CPU cache is independently bounded; only the current texture lives on the GPU.
 const cache=new Map(), CACHE_COUNT=8, CACHE_BYTES=32*1024*1024;
 let cacheBytes=0;
@@ -818,13 +990,20 @@ async function showFrame(frame){
       if(response.status===410)throw new Error('This volume has expired from the buffer. Choose a newer time or follow live.');
       if(!response.ok)throw new Error(`Volume unavailable (${response.status}).`);
       if(Number(response.headers.get('X-Volume-Version'))!==frame.version)throw new Error('Volume identity mismatch.');
-      data=new Uint8Array(await response.arrayBuffer());
-      if(data.byteLength!==frame.shape.reduce((a,b)=>a*b,1))throw new Error('Incomplete volume received.');
+      if(response.headers.get('X-Volume-Format')!=='uint16-le-zyx')throw new Error('Unsupported volume format.');
+      const buffer=await response.arrayBuffer();
+      if(buffer.byteLength!==frame.shape.reduce((a,b)=>a*b,1)*2)throw new Error('Incomplete volume received.');
+      data=new Uint16Array(buffer);
       if(id!==requestID)return false;
       cachePut(frame.version,data);
     }
     if(id!==requestID || !renderer)return false;
     const activeRenderer=renderer;
+    if(!inspectionShape || frame.shape.some((size,index)=>size!==inspectionShape[index])){
+      inspectionPoint=frame.shape.map(size=>Math.floor(size/2));inspectionShape=[...frame.shape];
+      activeRenderer.target=[0,0,0];
+    }
+    inspectionData=data;
     await activeRenderer.setVolume(data,frame.shape);
     if(id!==requestID || renderer!==activeRenderer)return false;
     displayed=frame;
@@ -832,7 +1011,7 @@ async function showFrame(frame){
     const settings=frame.reconstruction;
     $('#displayed-reconstruction').textContent=settings
       ?`Displayed scan ${frame.scan_id}: ${settings.options.algorithm.toUpperCase()} · settings ${settings.revision}`:'';
-    $('#dimensions').textContent=`${frame.shape.join(' × ')} voxels`;
+    $('#dimensions').textContent=`${frame.shape.join(' × ')} voxels · 16-bit display`;
     $('#view-message').textContent=followLive?'Following the latest completed scan.':playing?'Playing buffered scans.':'Paused · Drag the time slider to explore buffered scans.';
     updateSlice();
     return true;
@@ -879,11 +1058,29 @@ for(const [id,step] of [['previous',-1],['next',1]])$('#'+id).addEventListener('
   showFrame(frames[Math.max(0,Math.min(frames.length-1,index<0?0:index+step))]);
 });
 $('#speed').addEventListener('change',schedulePlayback);
-for(const name of ['opacity','threshold','cut','appearance'])$('#'+name).addEventListener('input',()=>renderer?.draw());
+for(const name of ['opacity','threshold','cut','appearance','clip-axis','clip-side','clip-enabled','show-crosshair'])$('#'+name).addEventListener('input',()=>{renderer?.draw();drawInspection();});
 $('#view-mode').addEventListener('change',()=>updateSlice());
 $('#slice-axis').addEventListener('change',()=>updateSlice(true));
-for(const name of ['slice-index','slice-window'])$('#'+name).addEventListener('input',()=>updateSlice());
-$('#reset').addEventListener('click',()=>{for(const [id,value] of [['appearance',defaultAppearance],['opacity',1.6],['threshold',.035],['cut',1],['slice-window',defaultSliceWindow]])$('#'+id).value=value;renderer?.reset();updateSlice(true);});
+$('#slice-index').addEventListener('input',()=>updateSlice());
+$('#slice-window').addEventListener('input',()=>{$('#window-low').value=0;$('#window-high').value=$('#slice-window').value;updateSlice();});
+$('#focus-point').addEventListener('click',()=>{if(renderer?.extent){renderer.target=renderer.point();renderer.draw();}});
+$('#clip-point').addEventListener('click',()=>{
+  if(!inspectionShape)return;
+  const axis=2-Number($('#clip-axis').value);
+  $('#cut').value=(inspectionPoint[axis]+.5)/inspectionShape[axis];$('#clip-enabled').checked=true;renderer?.draw();
+});
+for(const name of ['window-low','window-high'])$('#'+name).addEventListener('input',()=>updateSlice());
+for(const name of ['spacing-x','spacing-y','spacing-z','spacing-unit'])$('#'+name).addEventListener('change',()=>{
+  const spacing=['x','y','z'].map(axis=>Number($('#spacing-'+axis).value));
+  if(spacing.some(value=>!Number.isFinite(value) || value<=0)){
+    $('#spacing-unit').value=spacingUnit;$('#point-position').textContent='Spacing must be finite and positive.';return;
+  }
+  spacingUnit=$('#spacing-unit').value;
+  voxelSpacing=spacingUnit==='voxel'?[1,1,1]:spacing;
+  if(renderer?.shape){renderer.geometry(renderer.shape);renderer.target=[0,0,0];renderer.draw();}
+  updateSlice();
+});
+$('#reset').addEventListener('click',()=>{for(const [id,value] of [['appearance',defaultAppearance],['opacity',1.6],['threshold',.035],['cut',1],['slice-window',defaultSliceWindow]])$('#'+id).value=value;$('#clip-enabled').checked=false;$('#clip-axis').value='2';$('#clip-side').value='0';$('#show-crosshair').checked=true;$('#window-low').value=0;$('#window-high').value=defaultSliceWindow;inspectionPoint=inspectionShape?.map(size=>Math.floor(size/2)) || [0,0,0];renderer?.reset();updateSlice(true);});
 function freshCanvas(){
   // A canvas cannot switch context types after WebGPU/WebGL has claimed it.
   const old=$('#volume'),canvas=old.cloneNode(false);old.replaceWith(canvas);return canvas;
@@ -902,7 +1099,7 @@ async function switchToWebGL(failed,reason){
   failed.dispose();renderer=null;displayed=null;
   try{
     renderer=new WebGLVolumeRenderer(freshCanvas());
-    for(const key of ['yaw','pitch','distance'])renderer[key]=failed[key];
+    for(const key of ['yaw','pitch','distance','target'])renderer[key]=failed[key];
     $('#renderer-kind').textContent=renderer.backend;refreshControls();
     if(frame)await showFrame(frame);
   }catch(error){failRenderer(error.message);}
@@ -927,6 +1124,7 @@ function resetViewerRun(runID){
   sliceController?.abort();++sliceRequestID;
   if(sliceURL)URL.revokeObjectURL(sliceURL);sliceURL=null;sliceShape=null;
   $('#slice-image').removeAttribute('src');
+  inspectionData=null;inspectionShape=null;inspectionPoint=[0,0,0];drawInspection();
   frames=[];selected=null;displayed=null;followLive=true;cache.clear();cacheBytes=0;
   reconState=null;reconDirty=false;reconSaving=false;reconError='';inputDefaultsSet=false;
   if(!pipelineStopping)pipelineStopRequested=false;
@@ -945,14 +1143,20 @@ async function update(){
     if(!response.ok)throw new Error('Status unavailable');
     const state=await response.json(),view=state.viewer;
     if(state.pipeline_control){
-      resetViewerRun(state.pipeline_control.run_id);displayPipelineState(state.pipeline_control);
+      if(pipelineState && state.pipeline_control.run_id<pipelineState.run_id)return;
+      if(state.pipeline_control.phase==='running' &&
+         state.pipeline_control.active?.revision===state.pipeline_control.requested?.revision){
+        resetViewerRun(state.pipeline_control.run_id);
+      }
+      displayPipelineState(state.pipeline_control);
     }else if(!pipelineSaving){
       $('#pipeline-fields').disabled=true;$('#pipeline-apply').disabled=true;
       $('#pipeline-stop').disabled=true;$('#pipeline-current').disabled=true;$('#pipeline-auto-buffers').disabled=true;
       $('#pipeline-status').textContent=state.pipeline_control_error || 'Pipeline controls unavailable.';
     }
     updateDisplayRange(view,state.workload);displayImageInformation(state.workload);
-    if(state.reconstruction_control)displayReconstructionState(state.reconstruction_control);
+    if(state.reconstruction_control && !pipelineTransitionPending())displayReconstructionState(state.reconstruction_control);
+    else if(reconState)displayReconstructionState(reconState);
     else if(!reconSaving){
       $('#recon-fields').disabled=true;$('#recon-apply').disabled=true;
       $('#recon-status').textContent=state.reconstruction_control_error || 'Reconstruction controls unavailable.';
@@ -960,11 +1164,19 @@ async function update(){
     phase=['restarting','stopping'].includes(state.pipeline_control?.phase)?state.pipeline_control.phase:state.phase || 'waiting';
     $('#phase').textContent=phase[0].toUpperCase()+phase.slice(1);$('#dot').className=`dot ${phase}`;
     for(const stage of document.querySelectorAll('.stage')){
-      const report=state.stages?.[stage.dataset.role];if(!report)continue;
+      const report=state.stages?.[stage.dataset.role];
+      if(!report){
+        if(stage.dataset.role==='decompress' && state.workload?.decompression===false){
+          stage.querySelector('strong').textContent='Off';
+          stage.querySelector('.detail').textContent='Raw detector frames go directly to correction';
+          stage.querySelector('.detail').classList.toggle('pressure',false);
+        }
+        continue;
+      }
       stage.querySelector('strong').textContent=report.published.toLocaleString();
       const detail=stage.querySelector('.detail');
       const rate=state.throughput?.stages?.[stage.dataset.role];
-      const unit=stage.dataset.role==='reconstruct'?(state.workload?.buffering?.output_mode==='blocks'?'blocks/s':'volumes/s'):'frames/s';
+      const unit=stage.dataset.role==='reconstruct'?({blocks:'blocks/s',slices:'slice sets/s'}[state.workload?.buffering?.output_mode] ?? 'volumes/s'):'frames/s';
       const speed=rate?` · ${rate.frames_per_second.toFixed(1)} ${unit} · ${rate.payload_mib_per_second.toFixed(2)} MiB/s mean`:'';
       const gpu=state.workload?.stage_gpus?.[stage.dataset.role];
       const placement=gpu!=null?` · GPU ${gpu}`:'';
@@ -973,7 +1185,7 @@ async function update(){
       detail.textContent=`${report.completed_scans} scans complete${speed}${placement}${reconstructors}${transport}${report.pressure?' · waiting for room':''}`;
       detail.classList.toggle('pressure',report.pressure);
     }
-    $('#archived').textContent=(state.archive?.archived_frames ?? 0).toLocaleString();
+    $('#archived').textContent=state.workload?.saving===false?'Off':(state.archive?.archived_frames ?? 0).toLocaleString();
     $('#bytes').textContent=bytes(state.archive?.archived_bytes ?? 0);
     $('#elapsed').textContent=`${(state.elapsed_seconds ?? 0).toFixed(1)} s`;
     const workload=state.workload;
@@ -994,6 +1206,7 @@ async function update(){
           if(reconstruction.filter_cutoff!=null) settings.push(`cutoff ${reconstruction.filter_cutoff}`);
           if(reconstruction.threads!=null) settings.push(`${reconstruction.threads} threads`);
           if(reconstruction.center!=null) settings.push(`center ${reconstruction.center} px`);
+          if(reconstruction.dtype==='float16') settings.push('float16');
         }
         if(reconstruction.gaussian_fwhm) settings.push(`Gaussian FWHM ${reconstruction.gaussian_fwhm} voxels`);
         if(reconstruction.scale_factor!=null && reconstruction.scale_factor!==1) settings.push(`scale ${reconstruction.scale_factor}`);
@@ -1019,10 +1232,123 @@ async function update(){
     $('#pipeline-current').disabled=true;$('#pipeline-auto-buffers').disabled=true;
     $('#pipeline-status').textContent=pipelineStopping?'Waiting for viewer to reconnect to send Stop…':pipelineStopRequested?'Acquisition stopped. The last image remains visible.':pipelineTransitionPending()?'Pipeline restart in progress. Reconnecting to this viewer…':'Viewer unavailable. Reconnecting…';
     $('#message').textContent=pipelineStopRequested?'Acquisition stopped. The last image remains visible.':'The acquisition viewer is offline. The last displayed volume remains visible.';
+  }finally{
+    setTimeout(update,250);
   }
-  setTimeout(update,250);
 }
 update();
+</script>
+<script>
+'use strict';
+// Slice output: the device backprojects three planes of the latest rotation. This panel shows
+// them for the frame the timeline displays, and its controls move the planes on the device.
+(()=>{
+// Unit steps in (z, y, x): down the image, across it, and the normal a position moves along.
+const orientations={axial:[[0,1,0],[0,0,1],[1,0,0]],coronal:[[1,0,0],[0,0,1],[0,1,0]],sagittal:[[1,0,0],[0,1,0],[0,0,1]]};
+function slicePlane(control,shape,size){
+  const [down,across,normal]=orientations[control.orientation];
+  const tilt=control.tilt*Math.PI/180,turn=control.turn*Math.PI/180,step=1/control.zoom;
+  const mix=(first,second,a,b)=>first.map((value,index)=>value*a+second[index]*b);
+  const u=mix(down,normal,Math.cos(tilt),Math.sin(tilt)),tilted=mix(normal,down,Math.cos(tilt),-Math.sin(tilt));
+  const v=mix(across,tilted,Math.cos(turn),Math.sin(turn));
+  // The image centre stays on the volume centre, at the chosen position along the normal.
+  const pivot=shape.map((length,index)=>normal[index]?control.position:(length-1)/2),half=(size-1)/2*step;
+  let origin=pivot.map((value,index)=>value-half*(u[index]+v[index]));
+  // An untilted plane lands on voxel centres, so its slice is not interpolated.
+  if(!control.tilt && !control.turn && control.zoom===1)origin=origin.map(value=>Math.round(value)+0);
+  return {origin,u:u.map(value=>value*step),v:v.map(value=>value*step)};
+}
+function defaultControls(shape){
+  return Object.keys(orientations).map((orientation,index)=>({orientation,position:Math.floor(shape[index]/2),tilt:0,turn:0,zoom:1}));
+}
+// Controls and images.
+const $=selector=>document.querySelector(selector);
+const section=$('#slice-stream'),images=[],rows=[];
+let controls=null,shape=null,size=0,shown='',sending=null,jsonRevision=-1;
+for(let index=0;index<3;index++){
+  const figure=document.createElement('figure'),image=document.createElement('img'),caption=document.createElement('figcaption');
+  image.alt=`Slice ${index+1}`;figure.append(image,caption);$('#slice-stream-images').append(figure);images.push({image,caption});
+}
+function field(text,input){const label=document.createElement('label');label.append(text,input);return label;}
+function build(){
+  $('#slice-stream-planes').replaceChildren();rows.length=0;
+  for(const [index,control] of controls.entries()){
+    const row=document.createElement('div'),name=document.createElement('strong'),orientation=document.createElement('select');
+    row.className='plane';name.textContent=`Slice ${index+1}`;
+    for(const value of Object.keys(orientations)){const option=document.createElement('option');option.value=value;option.textContent=value;orientation.append(option);}
+    const number=(min,max,step)=>{const input=document.createElement('input');input.type='number';input.min=min;input.max=max;input.step=step;return input;};
+    const position=document.createElement('input'),tilt=number(-90,90,1),turn=number(-90,90,1),zoom=number(.25,16,.25),output=document.createElement('output');
+    position.type='range';position.min=0;position.step=1;
+    row.append(name,field('Orientation ',orientation),field('Position ',position),output,field('Tilt ° ',tilt),field('Turn ° ',turn),field('Zoom ',zoom));
+    $('#slice-stream-planes').append(row);rows.push({orientation,position,tilt,turn,zoom,output});
+    for(const input of [orientation,position,tilt,turn,zoom])input.addEventListener('input',()=>{
+      if(input===orientation)control.position=Math.floor(shape[orientations[orientation.value][2].indexOf(1)]/2);
+      else if(input===position)control.position=Number(position.value);
+      control.orientation=orientation.value;
+      for(const [key,element] of [['tilt',tilt],['turn',turn],['zoom',zoom]])if(Number.isFinite(element.valueAsNumber) && (key!=='zoom' || element.valueAsNumber>0))control[key]=element.valueAsNumber;
+      fill();send(controls.map(each=>slicePlane(each,shape,size)));
+    });
+  }
+  fill();
+}
+function fill(){
+  for(const [index,control] of controls.entries()){
+    const row=rows[index],length=shape[orientations[control.orientation][2].indexOf(1)];
+    row.orientation.value=control.orientation;row.position.max=length-1;row.position.value=control.position;
+    row.output.textContent=`${control.position+1} / ${length}`;
+    for(const key of ['tilt','turn','zoom'])if(document.activeElement!==row[key])row[key].value=control[key];
+  }
+}
+function send(planes){
+  // Only the newest request matters while a slider moves.
+  clearTimeout(sending);
+  sending=setTimeout(async()=>{
+    try{
+      const response=await fetch('/api/slices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(planes)});
+      if(!response.ok)throw new Error(await response.text());
+      $('#slice-stream-status').textContent='A moved plane appears with the next update.';$('#slice-stream-status').classList.remove('error');
+    }catch(error){$('#slice-stream-status').textContent=error.message;$('#slice-stream-status').classList.add('error');}
+  },120);
+}
+$('#slice-stream-reset').addEventListener('click',()=>{if(!shape)return;controls=defaultControls(shape);fill();send(controls.map(each=>slicePlane(each,shape,size)));});
+$('#slice-stream-apply').addEventListener('click',()=>{
+  try{send(JSON.parse($('#slice-stream-json').value));}
+  catch(error){$('#slice-stream-status').textContent=error.message;$('#slice-stream-status').classList.add('error');}
+});
+function refresh(){
+  // The main script owns the status poll, the timeline and the display window.
+  const state=typeof reconState==='undefined'?null:reconState,slices=state?.output_mode==='slices'?state.slices:null;
+  section.hidden=!slices;document.body.classList.toggle('slice-stream',Boolean(slices));
+  document.querySelector('.stage[data-role="reconstruct"] .small').textContent=slices?'slice sets reconstructed':'volumes reconstructed';
+  if(!slices)return;
+  if(!shape || slices.size!==size || slices.volume_shape.some((length,index)=>length!==shape[index])){
+    shape=[...slices.volume_shape];size=slices.size;controls=defaultControls(shape);build();
+  }
+  if(slices.revision!==jsonRevision && document.activeElement!==$('#slice-stream-json')){
+    jsonRevision=slices.revision;$('#slice-stream-json').value=JSON.stringify(slices.planes).replaceAll('},{','},\n{');
+    // Planes given at launch or as JSON need not be ones these controls can express.
+    const same=JSON.stringify(slices.planes)===JSON.stringify(controls.map(each=>slicePlane(each,shape,size)));
+    if(!$('#slice-stream-status').classList.contains('error'))$('#slice-stream-status').textContent=same
+      ?'A moved plane appears with the next update.':'These planes were set elsewhere. Moving a control replaces all three.';
+  }
+  const frame=typeof displayed==='undefined'?null:displayed;
+  if(!frame || frame.shape[0]!==3)return;
+  const maximum=typeof displayMax==='undefined'?.01:displayMax;
+  let low=Number($('#window-low')?.value ?? 0),high=Number($('#window-high')?.value ?? maximum);
+  if(!(low>=0 && high>low && high<=maximum)){low=0;high=maximum;}
+  const key=`${frame.version}/${low}/${high}`;
+  if(key===shown)return;
+  shown=key;
+  const interval=state.update_projections ? ` · window ends at projection ${frame.projection+1}` : '';
+  $('#slice-stream-info').textContent=`Scan ${frame.scan_id}${interval} · ${size} × ${size} pixels each`;
+  for(const [index,{image,caption}] of images.entries()){
+    image.src=`/api/slice?v=${frame.version}&axis=0&index=${index}&window_max=${high}&window_min=${low}`;
+    const plane=frame.planes?.[index];
+    caption.textContent=plane?`origin ${plane.origin.map(value=>+value.toFixed(2)).join(', ')} · u ${plane.u.map(value=>+value.toFixed(3)).join(', ')} · v ${plane.v.map(value=>+value.toFixed(3)).join(', ')}`:'';
+  }
+}
+setInterval(refresh,200);
+})();
 </script>
 </body>
 </html>
