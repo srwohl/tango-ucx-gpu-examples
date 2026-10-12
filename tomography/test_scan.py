@@ -127,6 +127,19 @@ class HDF5ScanTests(unittest.TestCase):
             np.testing.assert_array_equal(reference["dark"], np.full((4, 6), 10.6, np.float32))
             np.testing.assert_array_equal(reference["flat"], np.full((4, 6), 400.2, np.float32))
 
+    def test_raw_detector_replay_preserves_frames_and_calibration_without_lz4(self):
+        meta = self.prepare(codec="raw", sino=selection("1:4:2"), proj=selection("1:5:2"))
+        self.assertEqual(meta["codec"], "raw")
+        self.assertEqual(meta["payload_file"], "detector.bin")
+        payloads = (self.root / "scan" / meta["payload_file"]).read_bytes()
+        expected = [np.full((2, 6), 12, np.uint16), np.full((2, 6), 401, np.uint16),
+                    *self.raw[1:5:2, 1:4:2, :]]
+        for record, frame in zip(meta["frames"], expected):
+            self.assertEqual(record["bytes"], frame.nbytes)
+            actual = np.frombuffer(payloads[record["offset"]:record["offset"] + record["bytes"]],
+                                   np.uint16).reshape(frame.shape)
+            np.testing.assert_array_equal(actual, frame)
+
     def test_fractional_projections_survive_compression_and_reference_correction(self):
         raw = self.raw.astype(np.float32) + np.float32(.25)
         with h5py.File(self.file, "a") as file:

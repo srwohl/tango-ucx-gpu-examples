@@ -51,11 +51,11 @@
 </head>
 <body>
 <header>
-  <div><h1>Live GPU tomography</h1><p>Compressed acquisition · GPU reconstruction · concurrent archival</p></div>
+  <div><h1>Live GPU tomography</h1><p>Detector acquisition · reconstruction · live volumes</p></div>
   <div class="badge"><span id="dot" class="dot"></span><span id="phase">Connecting</span><button id="pipeline-stop" type="button" disabled>Stop acquisition</button></div>
 </header>
 <section class="pipeline" aria-label="Pipeline progress">
-  <div class="stage" data-role="source"><div class="eyebrow">01 / Compressed input</div><strong>0</strong><div class="small">frames published</div><p class="small detail">Waiting</p></div>
+  <div class="stage" data-role="source"><div class="eyebrow">01 / Detector input</div><strong>0</strong><div class="small">frames published</div><p class="small detail">Waiting</p></div>
   <div class="stage" data-role="decompress"><div class="eyebrow">02 / GPU decompress</div><strong>0</strong><div class="small">frames decoded</div><p class="small detail">Waiting</p></div>
   <div class="stage" data-role="correct"><div class="eyebrow">03 / GPU correct</div><strong>0</strong><div class="small">projections corrected</div><p class="small detail">Waiting</p></div>
   <div class="stage" data-role="reconstruct"><div class="eyebrow">04 / GPU reconstruct</div><strong>0</strong><div class="small">volumes reconstructed</div><p class="small detail">Waiting</p></div>
@@ -64,7 +64,7 @@
   <h2>Acquisition settings</h2>
   <p id="pipeline-image-info" class="small">Waiting for current image information.</p>
   <div class="pipeline-actions"><button id="pipeline-current" type="button" disabled>Load current settings</button><button id="pipeline-auto-buffers" type="button" disabled>Size buffers for this scan</button></div>
-  <p class="small">Apply finishes the current scan, drains processing and archival, and restarts all stages on this page’s URL. A new run starts with a fresh volume buffer. Batched processing applies to decompression only.</p>
+  <p class="small">Apply finishes the current scan, drains processing and archival, and restarts all stages on this page’s URL. A new run starts with a fresh volume buffer. Decompression, correction and reconstruction input each have their own processing settings.</p>
   <form id="pipeline-form">
     <fieldset id="pipeline-fields" disabled aria-label="Pipeline performance parameters"><details id="pipeline-advanced"><summary>Advanced settings</summary><div id="pipeline-advanced-fields"></div></details></fieldset>
     <button id="pipeline-apply" type="submit" disabled>Restart after current scan</button>
@@ -151,8 +151,17 @@ const pipelineFields={
   network:{label:'Network',choices:['tcp','auto','rdma']},
   net_devices:{label:'Network devices (blank = automatic)',type:'text'},
   transport_batch:{label:'Transport frames per batch',type:'number',min:1,max:16,step:1},
-  processing_batch:{label:'Decompression frames per batch',type:'number',min:1,max:16,step:1},
-  processing_mode:{label:'Decompression mode',choices:['scalar','batched']},
+  processing_batch:{label:'Default processing frames per batch',type:'number',min:1,max:16,step:1},
+  processing_mode:{label:'Default processing mode',choices:['scalar','batched']},
+  decompress:{label:'Decompress detector input',type:'checkbox'},
+  verify:{label:'Verify reconstructed values',type:'checkbox'},
+  save:{label:'Save detector archive and reconstructed output',type:'checkbox'},
+  decompress_batch:{label:'Decompression batch (blank = default)',type:'number',min:1,max:16,step:1,optional:true},
+  decompress_mode:{label:'Decompression mode',choices:['','scalar','batched'],optional:true},
+  correct_batch:{label:'Dark/flat correction batch (blank = default)',type:'number',min:1,max:16,step:1,optional:true},
+  correct_mode:{label:'Dark/flat correction mode',choices:['','scalar','batched'],optional:true},
+  reconstruct_batch:{label:'Reconstruction input batch (blank = default)',type:'number',min:1,max:16,step:1,optional:true},
+  reconstruct_mode:{label:'Reconstruction input mode',choices:['','scalar','batched'],optional:true},
   sinogram_memory:{label:'Sinogram memory',choices:['gpu','host']},
   receive_budget_mib:{label:'Receive budget (MiB)',type:'number',min:0,step:'any'},
   host_buffer_mib:{label:'Host input buffer (MiB)',type:'number',min:1,step:1},
@@ -169,14 +178,14 @@ for(const [key,spec] of Object.entries(pipelineFields)){
   const label=document.createElement('label');label.append(document.createTextNode(spec.label));
   const input=document.createElement(spec.choices?'select':'input');input.id=`pipeline-${key}`;
   if(spec.choices){
-    for(const value of spec.choices){const option=document.createElement('option');option.value=value;option.textContent=value;input.append(option);}
+    for(const value of spec.choices){const option=document.createElement('option');option.value=value;option.textContent=value || 'Default';input.append(option);}
     input.value='';
   }else{
     input.type=spec.type;
     for(const property of ['min','max','step'])if(spec[property]!=null)input[property]=spec[property];
   }
-  input.required=key!=='net_devices';label.append(input);
-  if(['transport_batch','processing_batch','processing_mode'].includes(key))$('#pipeline-fields').insertBefore(label,$('#pipeline-advanced'));
+  input.required=key!=='net_devices' && !spec.optional && spec.type!=='checkbox';label.append(input);
+  if(key.endsWith('_batch') || key.endsWith('_mode') && !['output_mode'].includes(key))$('#pipeline-fields').insertBefore(label,$('#pipeline-advanced'));
   else $('#pipeline-advanced-fields').append(label);
 }
 function pipelineTransitionPending(){
@@ -187,12 +196,16 @@ function pipelineFormOptions(){
   const options={};
   for(const [key,spec] of Object.entries(pipelineFields)){
     const value=$(`#pipeline-${key}`).value;
-    options[key]=key==='net_devices'?(value.trim() || null):spec.type==='number'?Number(value):value;
+    options[key]=spec.type==='checkbox'?$(`#pipeline-${key}`).checked:spec.optional && value===''?null:key==='net_devices'?(value.trim() || null):spec.type==='number'?Number(value):value;
   }
   return options;
 }
 function fillPipelineOptions(options){
-  for(const key of Object.keys(pipelineFields))if(key in options)$(`#pipeline-${key}`).value=options[key] ?? '';
+  for(const key of Object.keys(pipelineFields))if(key in options){
+    const input=$(`#pipeline-${key}`);
+    if(pipelineFields[key].type==='checkbox')input.checked=Boolean(options[key]);
+    else input.value=options[key] ?? '';
+  }
 }
 function displayImageInformation(workload){
   if(!workload)return;
@@ -216,7 +229,9 @@ function displayPipelineState(state){
   if(!pipelineDirty && !pipelineSaving && changed){
     const options=state.active?.options || {};
     for(const key of Object.keys(pipelineFields)){
-      const input=$(`#pipeline-${key}`);input.value=options[key] ?? '';
+      const input=$(`#pipeline-${key}`);
+      if(pipelineFields[key].type==='checkbox')input.checked=Boolean(options[key]);
+      else input.value=options[key] ?? '';
       input.placeholder=key in options?'':'Unavailable';
       if(['gpu','decompress_gpu','correct_gpu','reconstruct_gpu'].includes(key))input.max=state.gpu_count==null?'':state.gpu_count-1;
     }
@@ -957,7 +972,14 @@ async function update(){
     phase=['restarting','stopping'].includes(state.pipeline_control?.phase)?state.pipeline_control.phase:state.phase || 'waiting';
     $('#phase').textContent=phase[0].toUpperCase()+phase.slice(1);$('#dot').className=`dot ${phase}`;
     for(const stage of document.querySelectorAll('.stage')){
-      const report=state.stages?.[stage.dataset.role];if(!report)continue;
+      const report=state.stages?.[stage.dataset.role];
+      if(!report){
+        stage.querySelector('strong').textContent='—';
+        const detail=stage.querySelector('.detail');
+        detail.textContent=stage.dataset.role==='decompress' && state.workload?.detector_codec==='raw'?'Bypassed':'Waiting';
+        detail.classList.remove('pressure');
+        continue;
+      }
       stage.querySelector('strong').textContent=report.published.toLocaleString();
       const detail=stage.querySelector('.detail');
       const rate=state.throughput?.stages?.[stage.dataset.role];

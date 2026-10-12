@@ -83,6 +83,7 @@ def main():
 
                 requested = dict(network='auto', transport_batch=16, processing_batch=16,
                                  processing_mode='batched', receive_budget_mib=1,
+                                 decompress_batch=16, correct_batch=8, reconstruct_batch=4,
                                  sinogram_memory='host', output_mode='blocks',
                                  host_buffer_mib=1, pinned_buffer_mib=1, output_host_mib=1)
                 post(requested)
@@ -94,35 +95,45 @@ def main():
                 assert first['reconstruction_control']['active']['options']['scale_factor'] == 1.1
                 assert first['workload']['network']['net_devices'] == 'all'
                 assert first['workload']['processing']['processing_mode'] == 'batched'
+                assert first['workload']['processing']['stages']['correct'] == dict(batch=8, mode='batched')
+                assert first['workload']['processing']['stages']['reconstruct'] == dict(batch=4, mode='batched')
 
                 post(dict(network='tcp', transport_batch=4, processing_batch=4,
-                          processing_mode='scalar', sinogram_memory='gpu', output_mode='volume'))
+                          processing_mode='scalar', correct_mode='batched', correct_batch=2,
+                          reconstruct_mode='scalar', sinogram_memory='gpu', output_mode='volume'))
                 second = wait_state(lambda s: (
                     s['pipeline_control']['run_id'] == 2 and
                     s['pipeline_control']['phase'] == 'running' and s['viewer']['received_volumes'] >= 3))
                 assert second['workload']['network']['profile'] == 'tcp'
                 assert second['workload']['buffering']['sinogram_memory'] == 'gpu'
                 assert second['workload']['processing']['transport_batch'] == 4
-                post(dict(pixels=64, slices=4, angles=64))
+                assert second['workload']['processing']['stages']['correct'] == dict(batch=2, mode='batched')
+                assert second['workload']['processing']['stages']['reconstruct'] == dict(batch=4, mode='scalar')
+                post(dict(pixels=64, slices=4, angles=64, decompress=False, save=False, verify=False))
                 third = wait_state(lambda s: (
                     s['pipeline_control']['run_id'] == 3 and
                     s['pipeline_control']['phase'] == 'running' and s['viewer']['received_volumes'] >= 3))
                 assert third['workload']['detector_shape'] == [4, 64]
                 assert third['workload']['projections_per_volume'] == 64
+                assert third['workload']['detector_codec'] == 'raw'
+                assert not third['workload']['saving_enabled'] and not third['workload']['verification_enabled']
+                assert 'decompress' not in third['stages']
                 post({}, '/api/pipeline/stop')
                 assert process.wait(timeout=60) == 0
                 summaries = [json.loads((path / 'summary.json').read_text())
                              for path in (output, output / 'run-0001', output / 'run-0002', output / 'run-0003')]
                 for summary in summaries:
                     assert summary['completed_scans'] >= 1
-                    assert summary['archived_frames'] == summary['completed_scans'] * summary['workload']['input_frames_per_volume']
+                    assert summary['archived_frames'] == (summary['completed_scans'] * summary['workload']['input_frames_per_volume']
+                                                          if summary['saving_enabled'] else 0)
                     assert not any(stage['failure'] or stage['input_failure'] or stage['quarantined_bytes']
                                    for stage in summary['stages'].values())
                 print(json.dumps(dict(same_viewer_url=url, restarts=3, unsafe_restart_rejected=True,
                                       live_reconstruction_preserved=True,
                                       gui_stop_verified=True, scan_based_buffers_verified=True,
                                       completed_scans=[s['completed_scans'] for s in summaries],
-                                      all_archives_verified=True)), flush=True)
+                                      raw_input_and_disabled_output_verified=True,
+                                      all_saved_archives_verified=True)), flush=True)
             except BaseException:
                 log.seek(0)
                 print(log.read()[-12000:], file=sys.stderr)

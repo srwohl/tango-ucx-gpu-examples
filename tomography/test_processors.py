@@ -1,5 +1,6 @@
 """Detector dtype checks through the real processors with CPU library boundaries."""
 import importlib.util
+import os
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -50,9 +51,26 @@ class DetectorProcessorTests(unittest.TestCase):
             return correct
 
         self.kernel_input_types = []
+        self.raw_calls, self.raw_buffers = [], {}
+        def raw_kernel(source, name):
+            def launch(grid, block, arguments):
+                self.raw_calls.append(name)
+                pointers = arguments[0]
+                if name == "correct_frames":
+                    _, dark, flat, pixels, count = arguments
+                    for i in range(int(count)):
+                        raw = self.raw_buffers[int(pointers["inputs"][i])]
+                        output = self.raw_buffers[int(pointers["outputs"][i])]
+                        transmission = (raw.astype(np.float32) - dark) / (flat - dark)
+                        np.copyto(output, -np.log(np.clip(transmission, 1e-6, 1)))
+                else:
+                    _, sinogram, pixels, columns, angles, first, count = arguments
+                    for i in range(int(count)):
+                        sinogram[:, int(first) + i, :] = self.raw_buffers[int(pointers["inputs"][i])]
+            return launch
         cupy = SimpleNamespace(dtype=np.dtype, float32=np.float32, uint8=np.uint8,
                                empty=np.empty, empty_like=np.empty_like, copyto=np.copyto,
-                               ElementwiseKernel=kernel,
+                               ElementwiseKernel=kernel, RawKernel=raw_kernel,
                                cuda=SimpleNamespace(Device=lambda gpu: SimpleNamespace(use=lambda: None),
                                                     ExternalStream=lambda pointer: Stream()))
         nvcomp = SimpleNamespace(Codec=Codec, BitstreamKind=SimpleNamespace(RAW="raw"),
@@ -150,6 +168,106 @@ class DetectorProcessorTests(unittest.TestCase):
                 self.assertEqual(processor.received, 0)
         with self.assertRaisesRegex(ValueError, "capacity"):
             processor.consume_many([valid] * 17)
+
+    def test_correction_batches_calibration_and_projections_into_independent_slots(self):
+        for element, dtype in (("u16", np.uint16), ("f32", np.float32)):
+            with self.subTest(element=element):
+                module = self.load_processor()
+                scan = dict(rows=2, columns=3, angles=3, theta=[0., .1, .2], element=element)
+                processor = module.Processor("correct", scan, 0, 1, 1)
+                for cycle in range(2):
+                    processor.begin_scan()
+                    raw = [np.full((2, 3), value + cycle, dtype)
+                           for value in (10, 100, 30, 60, 90)]
+                    frames = []
+                    for i, image in enumerate(raw):
+                        self.raw_buffers[i + 1] = image
+                        self.raw_buffers[i + 101] = np.full((2, 3), np.nan, np.float32)
+                        frames.append((i + 1, image.nbytes, i + 101 if i >= 2 else 0,
+                                       min(i, 2), max(0, i - 2), scan["theta"][max(0, i - 2)]))
+                    with patch.object(module, "array_at", side_effect=lambda p, *args: self.raw_buffers[p]):
+                        processor.consume_many(frames[:3])
+                        processor.consume_many(frames[3:])
+                    processor.finish()
+                    self.assertEqual(processor.projections, 3)
+                    for i in range(2, 5):
+                        expected = -np.log((raw[i].astype(np.float32) - raw[0]) / (raw[1] - raw[0]))
+                        np.testing.assert_allclose(self.raw_buffers[i + 101], expected, rtol=2e-6)
+                self.assertEqual(self.raw_calls, ["correct_frames"] * 4)
+
+    def test_invalid_correction_group_does_not_mutate_calibration_or_queue_reads(self):
+        module = self.load_processor()
+        processor = module.Processor("correct", dict(rows=2, columns=3, angles=2,
+                                     theta=[0., .1], element="u16"), 0, 1, 1)
+        calibration = [(1, 12, 0, 0, 0, 0.), (2, 12, 0, 1, 0, 0.)]
+        for bad in ((3, 12, 4, 2, 1, .1), (3, 6, 4, 2, 0, 0.),
+                    (3, 12, 4, 2, 0, .5), (3, 12, 0, 2, 0, 0.)):
+            with self.subTest(bad=bad), patch.object(module, "array_at") as borrowed:
+                with self.assertRaises(ValueError):
+                    processor.consume_many(calibration + [bad])
+                borrowed.assert_not_called()
+                self.assertFalse(processor.dark_seen or processor.flat_seen)
+                self.assertEqual(processor.projections, 0)
+                self.assertFalse(self.raw_calls)
+
+    def test_reconstruction_batches_pack_distinct_frames_and_reconstruct_once(self):
+        module = self.load_processor()
+        scan = dict(rows=2, columns=3, angles=3, theta=[0., .1, .2])
+        processor = module.Processor("reconstruct", scan, 0, 1, 1)
+        output = np.empty((2, 3, 3), np.float32)
+        self.raw_buffers[99] = output
+        frames = []
+        for projection, angle in enumerate(scan["theta"]):
+            image = (np.arange(6).reshape(2, 3) + projection * 10).astype(np.float32)
+            self.raw_buffers[projection + 1] = image
+            frames.append((projection + 1, image.nbytes, 99 if projection == 2 else 0,
+                           2, projection, angle))
+        with patch.object(module, "array_at", side_effect=lambda p, *args: self.raw_buffers[p]), \
+             patch.object(processor, "reconstruct") as reconstruct:
+            processor.consume_many(frames[:2])
+            reconstruct.assert_not_called()
+            processor.consume_many(frames[2:])
+            reconstruct.assert_called_once_with(output)
+        processor.finish()
+        for projection in range(3):
+            np.testing.assert_array_equal(processor.sinogram[:, projection], self.raw_buffers[projection + 1])
+        self.assertEqual(self.raw_calls, ["pack_frames"])
+
+
+@unittest.skipUnless(os.environ.get("TOMOGRAPHY_TEST_GPU") == "1", "set TOMOGRAPHY_TEST_GPU=1")
+class BatchGpuTests(unittest.TestCase):
+    def test_correction_and_sinogram_packing_use_real_borrowed_gpu_allocations(self):
+        import cupy as cp
+        from processors import Processor
+        stream = cp.cuda.Stream(non_blocking=True)
+        scan = dict(rows=3, columns=5, angles=5, theta=[0., .1, .2, .3, .4])
+        for element, dtype in (("u16", cp.uint16), ("f32", cp.float32)):
+            with self.subTest(element=element), stream:
+                correction = Processor("correct", dict(scan, element=element), 0, stream.ptr, 1)
+                reconstruction = Processor("reconstruct", scan, 0, stream.ptr, 1)
+                spatial = cp.arange(15, dtype=cp.float32).reshape(3, 5) % 4
+                inputs = [(value + spatial * (1 if i == 0 else 2 if i == 1 else 3)).astype(dtype)
+                          for i, value in enumerate((10, 100, 20, 30, 40, 50, 60))]
+                outputs = [cp.empty((3, 5), cp.float32) for _ in range(5)]
+                frames = [(raw.data.ptr, raw.nbytes, outputs[i - 2].data.ptr if i >= 2 else 0,
+                           min(i, 2), max(0, i - 2), scan["theta"][max(0, i - 2)])
+                          for i, raw in enumerate(inputs)]
+                correction.consume_many(frames[:4])
+                correction.consume_many(frames[4:])
+                correction.finish()
+                received = [(output.data.ptr, output.nbytes, 0, 2, i, scan["theta"][i])
+                            for i, output in enumerate(outputs)]
+                # Inspect the retained sinogram before a backend call, independently of ASTRA.
+                reconstruction.buffer_plan["output_mode"] = "blocks"
+                reconstruction.consume_many(received[:3])
+                reconstruction.consume_many(received[3:])
+                reconstruction.finish()
+                stream.synchronize()
+                for i, output in enumerate(outputs):
+                    dark, flat, raw = (inputs[j].get().astype(np.float32) for j in (0, 1, i + 2))
+                    expected = -np.log(np.clip((raw - dark) / (flat - dark), 1e-6, 1))
+                    np.testing.assert_allclose(output.get(), expected, rtol=2e-6)
+                    np.testing.assert_allclose(reconstruction.sinogram[:, i].get(), expected, rtol=2e-6)
 
 
 if __name__ == "__main__":

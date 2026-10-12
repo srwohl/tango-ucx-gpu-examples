@@ -5,7 +5,8 @@ import tempfile
 import threading
 import unittest
 
-from pipeline_control import PipelineConflict, PipelineControl, atomic_json, validate_options
+from pipeline_control import (PROCESSING_ROLES, PipelineConflict, PipelineControl, atomic_json,
+                              stage_processing, validate_options)
 
 
 OPTIONS = dict(pixels=32, slices=16, angles=90, network="auto", net_devices=None, transport_batch=4, processing_batch=4,
@@ -26,14 +27,30 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(validate_options(OPTIONS, 2), OPTIONS)
         self.assertEqual(validate_options(dict(decompress_gpu=1, scan_period=0), 2),
                          dict(decompress_gpu=1, scan_period=0))
+        self.assertEqual(validate_options(dict(verify=False, save=True, decompress=False)),
+                         dict(verify=False, save=True, decompress=False))
+
+    def test_stage_overrides_and_inheritance_are_validated_and_resolved(self):
+        options = dict(OPTIONS, processing_mode="batched", processing_batch=16,
+                       decompress_batch=2, correct_batch=8, correct_mode="scalar",
+                       reconstruct_batch=None, reconstruct_mode=None)
+        self.assertEqual(validate_options(options), options)
+        self.assertEqual(stage_processing(options, "decompress"), dict(batch=2, mode="batched"))
+        self.assertEqual(stage_processing(options, "correct"), dict(batch=4, mode="scalar"))
+        self.assertEqual(stage_processing(options, "reconstruct"), dict(batch=4, mode="batched"))
 
     def test_unknown_types_ranges_and_nonfinite_values(self):
         invalid = [None, [], {}, {"surprise": 1}, {"network": "ethernet"},
                    {"network": ["auto"]}, {"processing_mode": "parallel"},
                    {"sinogram_memory": "cuda"}, {"output_mode": "latest"},
                    {"net_devices": 1}, {"net_devices": ""}, {"net_devices": "lo\n"}]
+        for key in ("verify", "save", "decompress"):
+            invalid += [{key: value} for value in (1, 0, "false", None)]
         for key in ("transport_batch", "processing_batch"):
             invalid += [{key: value} for value in (0, 17, 1.5, True)]
+        for role in PROCESSING_ROLES:
+            invalid += [{f"{role}_batch": value} for value in (0, 17, 1.5, True)]
+            invalid += [{f"{role}_mode": value} for value in ("parallel", 1, True)]
         for key in ("gpu", "decompress_gpu", "correct_gpu", "reconstruct_gpu"):
             invalid += [{key: value} for value in (-1, 2, 0.0, True)]
         for key in ("host_buffer_mib", "pinned_buffer_mib", "output_host_mib", "pixels", "slices", "angles"):
@@ -107,17 +124,17 @@ class ControlTests(unittest.TestCase):
             self.control.configure(dict(network="tcp"))
         self.assertFalse(self.control.request_path.exists())
 
-    def test_fixed_hdf5_geometry_and_batched_processing_constraint(self):
+    def test_fixed_hdf5_geometry_and_stage_processing_updates(self):
         atomic_json(self.control.state_path, dict(self.state, fixed_geometry=True))
         with self.assertRaisesRegex(ValueError, "geometry is fixed"):
             self.control.configure(dict(pixels=64))
         self.assertFalse(self.control.request_path.exists())
-        with self.assertRaisesRegex(ValueError, "must not exceed"):
-            self.control.configure(dict(processing_mode="batched", processing_batch=16))
-        self.assertFalse(self.control.request_path.exists())
         reply = self.control.configure(dict(pixels=32, transport_batch=16,
-                                             processing_mode="batched", processing_batch=16))
+                                             processing_mode="batched", processing_batch=16,
+                                             correct_batch=8, reconstruct_mode="scalar"))
         self.assertEqual(reply["requested"]["options"]["pixels"], 32)
+        self.assertEqual(reply["requested"]["options"]["correct_batch"], 8)
+        self.assertEqual(reply["requested"]["options"]["reconstruct_mode"], "scalar")
 
     def test_invalid_request_does_not_write_a_file(self):
         with self.assertRaises(ValueError):

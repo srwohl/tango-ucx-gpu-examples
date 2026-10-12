@@ -22,7 +22,7 @@ from scan import from_hdf5, generate, hdf5_dimensions, selection
 from reconstruction import ALGORITHMS, FILTERS, configuration, reference_reconstruction
 from host_buffering import memory_plan
 from output_blocks import OutputCollector, read_complete
-from pipeline_control import atomic_json, validate_options
+from pipeline_control import PROCESSING_ROLES, atomic_json, stage_processing, validate_options
 
 DEFAULT_WORKLOAD = dict(pixels=64, slices=8, angles=96, budget=262144, scan_period=1)
 STRESS_WORKLOAD = dict(pixels=128, slices=32, angles=360, budget=8388608, scan_period=0)
@@ -40,23 +40,28 @@ def launch_environment(args):
 
 def device_command(args, role, output, port, name, devices):
     gpu = args.gpu if role == "source" else getattr(args, f"{role}_gpu")
+    processing = stage_processing(vars(args), role)
     command = [str(args.device_server.resolve()), "local", "-nodb", "-dlist", name,
                "-ORBendPoint", f"giop:tcp:127.0.0.1:{port}",
                "--role", role, "--scan", str(output / "scan" / "scan.json"),
                "--gpu", str(gpu), "--budget", str(args.budget),
                "--allow-gpu-over-tcp", "0" if args.network == "rdma" else "1",
                "--transport-batch", str(args.transport_batch),
-               "--processing-batch", str(args.processing_batch),
-               "--processing-mode", args.processing_mode,
+               "--processing-batch", str(processing["batch"]),
+               "--processing-mode", processing["mode"],
                "--iterations", str(args.iterations), "--scans", str(args.scans),
                "--scan-period-ms", str(round(args.scan_period * 1000))]
     if role != "source":
-        upstream = {"decompress": "source", "correct": "decompress",
+        upstream = {"decompress": "source", "correct": "decompress" if args.decompress else "source",
                     "reconstruct": "correct"}[role]
         command.extend(["--upstream", devices[upstream]])
     if role == "correct":
         command.extend(["--delay-ms", str(args.correction_delay_ms)])
     return command
+
+
+def pipeline_roles(args):
+    return ("source",) + (("decompress",) if args.decompress else ()) + ("correct", "reconstruct")
 
 
 def workload_description(args, scan):
@@ -67,7 +72,9 @@ def workload_description(args, scan):
                 detector_element=scan["element"], detector_frame_bytes=detector_bytes,
                 corrected_frame_bytes=args.slices * args.pixels * 4,
                 detector_bytes_per_volume=detector_bytes * (args.angles + 2),
-                compressed_bytes_per_volume=sum(frame["bytes"] for frame in scan["frames"]),
+                compressed_bytes_per_volume=sum(frame["bytes"] for frame in scan["frames"]) if args.decompress else 0,
+                source_bytes_per_volume=sum(frame["bytes"] for frame in scan["frames"]),
+                detector_codec=scan["codec"], verification_enabled=args.verify, saving_enabled=args.save,
                 volume_bytes=args.slices * args.pixels**2 * 4,
                 reconstruction=scan["reconstruction"], iterations=scan["reconstruction"]["iterations"],
                 buffering=dict(scan.get("buffering", {}), memory_plan=memory_plan(scan, scan["reconstruction"])),
@@ -86,7 +93,7 @@ def streaming_rates(workload, scan, reports, elapsed, completed):
         count = report["published"]
         if role == "source":
             cycles, remainder = divmod(count, workload["input_frames_per_volume"])
-            size = cycles * workload["compressed_bytes_per_volume"] + sum(
+            size = cycles * workload.get("source_bytes_per_volume", workload["compressed_bytes_per_volume"]) + sum(
                 frame["bytes"] for frame in scan["frames"][:remainder])
         else:
             frame_size = dict(decompress=workload["detector_frame_bytes"],
@@ -118,7 +125,7 @@ def verify_archive(output, scan, completed_scans):
     """Bounded-memory verification even after an arbitrarily long looping run."""
     with (output / "archive" / "payloads.bin").open("rb") as archived, \
          (output / "archive" / "records.jsonl").open() as records, \
-         (output / "scan" / "compressed.bin").open("rb") as source:
+         (output / "scan" / scan.get("payload_file", "compressed.bin")).open("rb") as source:
         position = offset = 0
         for cycle in range(completed_scans):
             source.seek(0)
@@ -151,10 +158,11 @@ def run(args, output, stop_requested, env):
     import tango_ucx
 
     cp.cuda.Device(args.gpu).use()
+    codec = "lz4-raw" if args.decompress else "raw"
     if args.hdf5:
-        scan = from_hdf5(output / "scan", args.hdf5, **hdf5_options(args))
+        scan = from_hdf5(output / "scan", args.hdf5, codec=codec, **hdf5_options(args))
     else:
-        scan = generate(output / "scan", args.pixels, args.slices, args.angles, args.gpu)
+        scan = generate(output / "scan", args.pixels, args.slices, args.angles, args.gpu, codec=codec)
     scan["reconstruction"] = reconstruction_options(args)
     scan["buffering"] = buffering_options(args, scan)
     memory_plan(scan, scan["reconstruction"])
@@ -166,15 +174,19 @@ def run(args, output, stop_requested, env):
                                allow_gpu_over_tcp=args.network != "rdma")
     workload["processing"] = dict(transport_batch=args.transport_batch,
                                    processing_batch=args.processing_batch,
-                                   processing_mode=args.processing_mode)
-    with np.load(output / "scan" / "reference.npz") as reference:
-        truth = reference["phantom"] if "phantom" in reference else None
-        expected_volume = reference_reconstruction(
-            reference["sinogram"], np.asarray(scan["theta"], np.float32), args.reconstruct_gpu,
-            scan["reconstruction"], block_rows=args.slices_per_block if args.output_mode == "blocks" else None)
-        reference_sinogram = reference["sinogram"].copy()
+                                   processing_mode=args.processing_mode,
+                                   stages={role: stage_processing(vars(args), role)
+                                           for role in PROCESSING_ROLES})
+    truth = expected_volume = reference_sinogram = None
+    if args.verify:
+        with np.load(output / "scan" / "reference.npz") as reference:
+            truth = reference["phantom"] if "phantom" in reference else None
+            expected_volume = reference_reconstruction(
+                reference["sinogram"], np.asarray(scan["theta"], np.float32), args.reconstruct_gpu,
+                scan["reconstruction"], block_rows=args.slices_per_block if args.output_mode == "blocks" else None)
+            reference_sinogram = reference["sinogram"].copy()
     if args.display_max is None:
-        args.display_max = (0.01 if truth is not None else
+        args.display_max = (0.01 if truth is not None or not args.verify else
                             max(float(np.percentile(expected_volume, 99.5)), 1e-6))
     workload["display_max"] = args.display_max
     print(json.dumps(dict(workload=workload)), flush=True)
@@ -183,8 +195,9 @@ def run(args, output, stop_requested, env):
     devices, processes, logs = {}, {}, {}
     pressure = set()
     with ExitStack() as cleanup:
-        volume_settings = cleanup.enter_context((output / "volume-settings.jsonl").open("w"))
-        for role in ("source", "decompress", "correct", "reconstruct"):
+        volume_settings = cleanup.enter_context((output / "volume-settings.jsonl").open("w")) if args.save else None
+        roles = pipeline_roles(args)
+        for role in roles:
             port = free_port()
             name = f"example/tomography/{role}"
             devices[role] = f"127.0.0.1:{port}/{name}#dbase=no"
@@ -214,7 +227,7 @@ def run(args, output, stop_requested, env):
                             gpu=workload["stage_gpus"].get(role)) for role, device in devices.items()},
                 indent=2))
             # Join every link before any publisher starts. Start downstream first.
-            for role in ("reconstruct", "correct", "decompress", "source"):
+            for role in reversed(roles):
                 proxies[role].command_inout("Arm")
             volume = tango_ucx.every(proxies["reconstruct"], memory="host",
                                     budget=max(args.budget, memory_plan(scan, scan["reconstruction"])["gpu_output_bytes"] * 4 + 131072),
@@ -222,18 +235,20 @@ def run(args, output, stop_requested, env):
             cleanup.callback(volume.close)
             collector = OutputCollector.from_description(volume.description, lambda scan_id: json.loads(
                 proxies["reconstruct"].command_inout("ReconstructionForScan", str(scan_id))))
-            archive_log = cleanup.enter_context((output / "archive.log").open("w"))
-            archive = subprocess.Popen(
-                [sys.executable, str(ROOT / "tomography" / "archive.py"), devices["source"],
-                 "--output", str(output / "archive"), "--ready", str(output / "archive-ready.json"),
-                 "--budget", str(args.budget)], env=env, stdout=archive_log, stderr=archive_log,
-                start_new_session=True)
-            cleanup.callback(stop, archive)
-            until = time.monotonic() + 30
-            while not (output / "archive-ready.json").exists():
-                if archive.poll() is not None or time.monotonic() >= until:
-                    raise RuntimeError("compressed archive did not become ready")
-                time.sleep(0.05)
+            archive = None
+            if args.save:
+                archive_log = cleanup.enter_context((output / "archive.log").open("w"))
+                archive = subprocess.Popen(
+                    [sys.executable, str(ROOT / "tomography" / "archive.py"), devices["source"],
+                     "--output", str(output / "archive"), "--ready", str(output / "archive-ready.json"),
+                     "--budget", str(args.budget)], env=env, stdout=archive_log, stderr=archive_log,
+                    start_new_session=True)
+                cleanup.callback(stop, archive)
+                until = time.monotonic() + 30
+                while not (output / "archive-ready.json").exists():
+                    if archive.poll() is not None or time.monotonic() >= until:
+                        raise RuntimeError("detector archive did not become ready")
+                    time.sleep(0.05)
             live_url = None
             if args.live:
                 live_log = cleanup.enter_context((output / "live.log").open("w"))
@@ -259,7 +274,7 @@ def run(args, output, stop_requested, env):
                 print(json.dumps(dict(live_view=live_url, output=str(output))), flush=True)
                 if not args.no_browser:
                     webbrowser.open(live_url)
-            for role in ("reconstruct", "correct", "decompress", "source"):
+            for role in reversed(roles):
                 proxies[role].command_inout("Start")
             if getattr(args, "_control_dir", None) is not None:
                 state_path = args._control_dir / "pipeline-control.json"
@@ -280,6 +295,8 @@ def run(args, output, stop_requested, env):
             restart_plan = None
 
             def publish_status(phase, elapsed=None):
+                if not args.save and not args.live and phase != "finished":
+                    return
                 try:
                     archived = json.loads((output / "archive" / "progress.json").read_text())
                 except FileNotFoundError:
@@ -345,32 +362,38 @@ def run(args, output, stop_requested, env):
                     last_settings = json.loads(proxies["reconstruct"].command_inout(
                         "ReconstructionForScan", str(scan["scan_id"] + completed)))
                     options = last_settings["options"]
-                    if options != verified_options:
+                    if args.verify and options != verified_options:
                         expected_volume = reference_reconstruction(
                             reference_sinogram, np.asarray(scan["theta"], np.float32),
                             args.reconstruct_gpu, options,
                             block_rows=options["slices_per_block"] if args.output_mode == "blocks" else None)
                         verified_options = options
-                    np.testing.assert_allclose(result, expected_volume, rtol=3e-4, atol=2e-6)
-                    error = (float(np.linalg.norm(result-truth)/np.linalg.norm(truth))
-                             if truth is not None else None)
-                    # Live tuning can intentionally change scale, smoothing or convergence.
-                    if not np.isfinite(result).all():
-                        raise ValueError("reconstruction contains nonfinite values")
-                    if error is not None and last_settings["revision"] == 0 and error > args.max_phantom_error:
-                        raise ValueError(f"reconstruction does not reproduce the phantom: relative L2={error}")
-                    volume_settings.write(json.dumps(dict(last_settings, relative_l2_error=error)) + "\n")
-                    volume_settings.flush()
+                    elif not args.verify:
+                        verified_options = options
+                    if args.verify:
+                        np.testing.assert_allclose(result, expected_volume, rtol=3e-4, atol=2e-6)
+                        error = (float(np.linalg.norm(result-truth)/np.linalg.norm(truth))
+                                 if truth is not None else None)
+                        # Live tuning can intentionally change scale, smoothing or convergence.
+                        if not np.isfinite(result).all():
+                            raise ValueError("reconstruction contains nonfinite values")
+                        if error is not None and last_settings["revision"] == 0 and error > args.max_phantom_error:
+                            raise ValueError(f"reconstruction does not reproduce the phantom: relative L2={error}")
+                    if volume_settings is not None:
+                        volume_settings.write(json.dumps(dict(last_settings, relative_l2_error=error)) + "\n")
+                        volume_settings.flush()
                     workload["reconstruction"] = options
                     workload["buffering"]["memory_plan"] = memory_plan(scan, options)
                     workload["iterations"] = options["iterations"]
                     reconstruction = result
                     completed += 1
                     last_volume = time.monotonic()
-                    temporary = output / "volume.tmp.npy"
-                    np.save(temporary, reconstruction)
-                    temporary.replace(output / "volume.npy")
-                    print(json.dumps(dict(completed_scan=completed, shape=list(result.shape))), flush=True)
+                    if args.save:
+                        temporary = output / "volume.tmp.npy"
+                        np.save(temporary, reconstruction)
+                        temporary.replace(output / "volume.npy")
+                    print(json.dumps(dict(completed_scan=completed, shape=list(result.shape),
+                                          elapsed_seconds=last_volume - started)), flush=True)
                 reports = {role: json.loads(proxy.command_inout("Report"))
                            for role, proxy in proxies.items()}
                 for role, report in reports.items():
@@ -380,8 +403,8 @@ def run(args, output, stop_requested, env):
                         raise RuntimeError(f"{role} failed: {report}")
                 if any(process.poll() is not None for process in processes.values()):
                     raise RuntimeError("a device server exited unexpectedly")
-                if archive.poll() not in (None, 0):
-                    raise RuntimeError("compressed archive failed")
+                if archive is not None and archive.poll() not in (None, 0):
+                    raise RuntimeError("detector archive failed")
                 if args.live and viewer.poll() is not None:
                     raise RuntimeError("live viewer exited unexpectedly")
                 if time.monotonic() - last_volume > max(120, args.scan_period * 2):
@@ -395,18 +418,24 @@ def run(args, output, stop_requested, env):
                 raise ValueError("pipeline ended before all requested scans")
             reports = {role: json.loads(proxy.command_inout("Report"))
                        for role, proxy in proxies.items()}
-            archive.wait(timeout=20)
-            if archive.returncode:
-                raise RuntimeError("compressed archive failed")
+            if archive is not None:
+                archive.wait(timeout=20)
+                if archive.returncode:
+                    raise RuntimeError("detector archive failed")
             elapsed = time.monotonic() - started
             expected_counts = dict(source=(args.angles+2)*completed, decompress=(args.angles+2)*completed,
                                    correct=args.angles*completed,
                                    reconstruct=collector.index if collector is not None else completed)
             for role, expected in expected_counts.items():
+                if role not in reports:
+                    continue
                 if (reports[role]["published"] != expected or
                     reports[role]["completed_scans"] != completed):
                     raise ValueError(f"{role} scan counts differ: {reports[role]}")
-            archived_count = verify_archive(output, scan, completed)
+            archived_count = 0
+            if args.save:
+                archived_count = (verify_archive(output, scan, completed) if args.verify else
+                                  json.loads((output / "archive" / "summary.json").read_text())["archived_frames"])
             publish_status("finished", elapsed)
             if control_dir is not None and (control_dir / "pipeline-stop.json").exists():
                 state_path = control_dir / "pipeline-control.json"
@@ -434,26 +463,29 @@ def run(args, output, stop_requested, env):
                             expected_shape = [n for i,n in enumerate(reconstruction.shape) if i != axis]
                             if image.size != tuple(reversed(expected_shape)):
                                 raise ValueError("live slice dimensions differ from volume")
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
-            panels = [(reconstruction, f"{verified_options['algorithm'].upper()} reconstruction")]
-            if truth is not None:
-                panels.insert(0, (truth, "Phantom"))
-            figure, axes = plt.subplots(1, len(panels), figsize=(3.5 * len(panels), 3), squeeze=False)
-            for axis, (values, title) in zip(axes[0], panels):
-                axis.imshow(values[len(values) // 2], cmap="gray", vmin=0, vmax=args.display_max)
-                axis.set_title(title)
-                axis.axis("off")
-            figure.tight_layout()
-            figure.savefig(output / "reconstruction.png", dpi=140)
-            plt.close(figure)
-            summary = dict(device_servers=4, completed_scans=completed, archived_frames=archived_count,
+            if args.save:
+                import matplotlib
+                matplotlib.use("Agg")
+                import matplotlib.pyplot as plt
+                panels = [(reconstruction, f"{verified_options['algorithm'].upper()} reconstruction")]
+                if truth is not None:
+                    panels.insert(0, (truth, "Phantom"))
+                figure, axes = plt.subplots(1, len(panels), figsize=(3.5 * len(panels), 3), squeeze=False)
+                for axis, (values, title) in zip(axes[0], panels):
+                    axis.imshow(values[len(values) // 2], cmap="gray", vmin=0, vmax=args.display_max)
+                    axis.set_title(title)
+                    axis.axis("off")
+                figure.tight_layout()
+                figure.savefig(output / "reconstruction.png", dpi=140)
+                plt.close(figure)
+            summary = dict(device_servers=len(roles), completed_scans=completed, archived_frames=archived_count,
                            live_view=live_report, stopped=draining,
                            reconstruction_shape=list(reconstruction.shape), relative_l2_error=error,
                            max_phantom_error=args.max_phantom_error if truth is not None else None,
                            reconstruction_settings=last_settings,
-                           elapsed_seconds=elapsed, pressure_observed=sorted(pressure),
+                           elapsed_seconds=elapsed, acquisition_seconds=last_volume - started,
+                           verification_enabled=args.verify, saving_enabled=args.save,
+                           decompression_enabled=args.decompress, pressure_observed=sorted(pressure),
                            workload=workload,
                            throughput=streaming_rates(workload, scan, reports, elapsed, completed),
                            volume_transport=volume.health()["transport"], stages=reports,
@@ -481,8 +513,11 @@ def pipeline_options(args):
     keys = ("network", "net_devices", "transport_batch", "processing_batch", "processing_mode",
             "sinogram_memory", "host_buffer_mib", "pinned_buffer_mib", "output_mode",
             "output_host_mib", "gpu", "decompress_gpu", "correct_gpu", "reconstruct_gpu", "scan_period",
-            "pixels", "slices", "angles")
-    return dict({key: getattr(args, key) for key in keys}, receive_budget_mib=args.budget / 1024**2)
+            "pixels", "slices", "angles", "verify", "save", "decompress")
+    stages = {f"{role}_{setting}": getattr(args, f"{role}_{setting}")
+              for role in PROCESSING_ROLES for setting in ("batch", "mode")}
+    return dict({key: getattr(args, key) for key in keys}, **stages,
+                receive_budget_mib=args.budget / 1024**2)
 
 
 def pipeline_args(args, options, reconstruction=None):
@@ -555,6 +590,12 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device-server", type=Path, default=ROOT / "build-pipeline" / "pipeline_device")
     parser.add_argument("--output", type=Path, help="new output directory; temporary if omitted")
+    parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True,
+                        help="verify numeric results and archived payloads (default enabled)")
+    parser.add_argument("--save", action=argparse.BooleanOptionalAction, default=True,
+                        help="save detector archives, volume snapshots and plots (default enabled)")
+    parser.add_argument("--decompress", action=argparse.BooleanOptionalAction, default=True,
+                        help="decompress LZ4 input; --no-decompress publishes raw detector frames directly")
     parser.add_argument("--hdf5", type=Path, help="raw HDF5 detector scan; omit to generate a phantom")
     parser.add_argument("--data-path", default="/exchange/data", help="HDF5 projection dataset (angle, row, column)")
     parser.add_argument("--flat-path", default="/exchange/data_white", help="HDF5 flat image or stack")
@@ -617,12 +658,17 @@ def parse_args(argv=None):
     parser.add_argument("--network", "--profile", choices=("tcp", "rdma", "auto"), default="tcp",
                         help="UCX profile: local TCP, RC/CUDA without TCP fallback, or automatic selection")
     parser.add_argument("--net-devices", help="UCX interface or HCA:port; TCP defaults to lo, others to UCX selection")
-    parser.add_argument("--transport-batch", type=int, choices=range(1, 17), default=1,
+    parser.add_argument("--transport-batch", type=int, choices=range(1, 17), default=16,
                         help="maximum frames per UCX receive batch")
-    parser.add_argument("--processing-batch", type=int, choices=range(1, 17), default=1,
-                        help="maximum frames per batched decompression call")
-    parser.add_argument("--processing-mode", choices=("scalar", "batched"), default="scalar",
-                        help="scalar calls or nvCOMP batch decompression")
+    parser.add_argument("--processing-batch", type=int, choices=range(1, 17), default=16,
+                        help="shared maximum frames per processing call (default 16; capped by transport batch)")
+    parser.add_argument("--processing-mode", choices=("scalar", "batched"), default="batched",
+                        help="shared processing mode (default batched)")
+    for role in PROCESSING_ROLES:
+        parser.add_argument(f"--{role}-batch", type=int, choices=range(1, 17),
+                            help=f"maximum frames per {role} call; overrides --processing-batch")
+        parser.add_argument(f"--{role}-mode", choices=("scalar", "batched"),
+                            help=f"{role} processing mode; overrides --processing-mode")
     parser.add_argument("--budget", type=int, help="receive budget in bytes (default 262144)")
     parser.add_argument("--correction-delay-ms", type=int, default=0)
     mode = parser.add_mutually_exclusive_group()

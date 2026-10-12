@@ -31,7 +31,7 @@ def main():
                  "--algorithm", args.algorithm,
                  "--loop", "--scan-period", "0", "--live", "--no-browser", "--view-port", "0",
                  "--viewer-delay", "1", "--view-history-volumes", "2",
-                 "--budget", "131072"], stdout=log, stderr=log)
+                 "--budget", "262144"], stdout=log, stderr=log)
             try:
                 until = time.monotonic() + 60
                 initial_devices = None

@@ -6,7 +6,7 @@ import lz4.block
 import numpy as np
 
 
-def generate(directory, pixels, slices, angles, gpu):
+def generate(directory, pixels, slices, angles, gpu, *, codec="lz4-raw"):
     import astra
 
     if not astra.use_cuda():
@@ -29,7 +29,7 @@ def generate(directory, pixels, slices, angles, gpu):
     raw = np.rint(dark[:, None, :] + response[:, None, :] * np.exp(-attenuation)).astype(np.uint16)
     return _write_scan(directory, theta, dark, flat,
                        (raw[:, i, :] for i in range(angles)),
-                       dict(type="phantom"), phantom=phantom, raw=raw)
+                       dict(type="phantom"), codec=codec, phantom=phantom, raw=raw)
 
 
 def selection(value):
@@ -117,7 +117,7 @@ def _calibration(file, path, detector_shape, rows):
 
 def from_hdf5(directory, filename, *, data_path="/exchange/data",
               flat_path="/exchange/data_white", dark_path="/exchange/data_dark",
-              theta_path="/exchange/theta", theta_units="auto", sino=None, proj=None):
+              theta_path="/exchange/theta", theta_units="auto", sino=None, proj=None, codec="lz4-raw"):
     """Prepare raw Data Exchange HDF5 data as uint16 or float32 detector frames."""
     if theta_units not in ("auto", "degrees", "radians"):
         raise ValueError("theta units must be auto, degrees or radians")
@@ -170,16 +170,19 @@ def from_hdf5(directory, filename, *, data_path="/exchange/data",
         return _write_scan(directory, theta, dark, flat,
                            (_counts(data[index, rows, :], data_path, dtype)
                             for index in range(projections.start, projections.stop, projections.step)),
-                           source)
+                           source, codec=codec)
 
 
-def _write_scan(directory, theta, dark, flat, projections, source, **reference):
+def _write_scan(directory, theta, dark, flat, projections, source, *, codec="lz4-raw", **reference):
+    if codec not in ("lz4-raw", "raw"):
+        raise ValueError("detector codec must be lz4-raw or raw")
     slices, pixels = dark.shape
     angles = len(theta)
     expected = np.empty((slices, angles, pixels), dtype=np.float32)
     response = flat.astype(np.float64) - dark
     frames = []
-    with (directory / "compressed.bin").open("xb") as payloads:
+    payload_file = "compressed.bin" if codec == "lz4-raw" else "detector.bin"
+    with (directory / payload_file).open("xb") as payloads:
         def inputs():
             yield 0, 0, 0.0, dark
             yield 1, 0, 0.0, flat
@@ -189,11 +192,12 @@ def _write_scan(directory, theta, dark, flat, projections, source, **reference):
                 yield 2, index, float(theta[index]), frame
 
         for kind, projection, angle, frame in inputs():
-            compressed = lz4.block.compress(np.ascontiguousarray(frame).tobytes(), store_size=False)
+            raw_bytes = np.ascontiguousarray(frame).tobytes()
+            compressed = lz4.block.compress(raw_bytes, store_size=False) if codec == "lz4-raw" else raw_bytes
             frames.append(dict(kind=kind, projection=projection, theta=angle,
                                bytes=len(compressed), offset=payloads.tell()))
             payloads.write(compressed)
-    meta = dict(example="gpu-tomography-v1", codec="lz4-raw",
+    meta = dict(example="gpu-tomography-v1", codec=codec, payload_file=payload_file,
                 element="u16" if dark.dtype == np.uint16 else "f32",
                 rows=slices, columns=pixels, angles=angles, theta=theta.tolist(),
                 scan_id=1, calibration_id=1, source=source,

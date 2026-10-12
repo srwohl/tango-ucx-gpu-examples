@@ -41,8 +41,8 @@ struct Options {
     std::filesystem::path file;
     Json scan;
     int gpu = 0, delay_ms = 0, iterations = 40, scan_period_ms = 0;
-    int transport_batch = 1, processing_batch = 1;
-    std::string processing_mode = "scalar";
+    int transport_batch = 16, processing_batch = 16;
+    std::string processing_mode = "batched";
     bool allow_gpu_over_tcp = false;
     std::uint64_t scan_count = 1; // zero: keep the publisher alive until Stop
     std::uint64_t budget = 256ull << 10;
@@ -94,14 +94,15 @@ public:
         d.application_text = text.dump();
         const bool detector_float = cfg.scan.value("element", "u16") == "f32";
         std::uint64_t bytes = rows * cols;
-        if(cfg.role == "source") {
+        if(cfg.role == "source" && cfg.scan.value("codec", "lz4-raw") != "raw") {
             d.element = Element::Bytes;
             d.max_payload_bytes = cfg.scan.at("max_compressed_bytes");
             bytes = d.max_payload_bytes;
         } else {
-            d.element = cfg.role == "decompress" && !detector_float ? Element::U16 : Element::F32;
+            const bool detector = cfg.role == "source" || cfg.role == "decompress";
+            d.element = detector && !detector_float ? Element::U16 : Element::F32;
             d.shape = {rows, cols};
-            bytes *= cfg.role == "decompress" && !detector_float ? 2 : 4;
+            bytes *= detector && !detector_float ? 2 : 4;
             if(cfg.role == "reconstruct") {
                 output_rows = block_output ? buffers.at("output_block_rows").get<std::uint64_t>() : rows;
                 d.shape = {output_rows, cols, cols};
@@ -111,7 +112,7 @@ public:
         PublisherLimits limits;
         // Independent archive and live-view subscriptions join their respective publishers.
         limits.max_sessions = cfg.role == "source" || cfg.role == "reconstruct" ? 2 : 1;
-        const auto output_margin = cfg.role == "decompress" ?
+        const auto output_margin = cfg.role == "decompress" || cfg.role == "correct" ?
             std::max(8, 2 * cfg.processing_batch) : 8;
         limits.budget = std::max<std::uint64_t>(cfg.budget, bytes * output_margin + (192ull << 10));
         publisher_budget = limits.budget;
@@ -148,7 +149,8 @@ public:
             const auto &d = input->description();
             const auto meta = Json::parse(d.application_text);
             const auto expected = cfg.role == "decompress" ? "source" :
-                                  cfg.role == "correct" ? "decompress" : "correct";
+                                  cfg.role == "correct" ?
+                                      (cfg.scan.value("codec", "lz4-raw") == "raw" ? "source" : "decompress") : "correct";
             if(d.field_bytes != sizeof(Fields) || d.field_dtype != field_dtype ||
                meta.at("role") != expected || meta.at("scan_id") != cfg.scan.at("scan_id") ||
                meta.at("rows") != cfg.scan.at("rows") ||
@@ -199,6 +201,9 @@ public:
         return Json{{"role", cfg.role}, {"processed", processed.load()},
                     {"transport_batch", cfg.transport_batch}, {"processing_batch", cfg.processing_batch},
                     {"processing_mode", cfg.processing_mode},
+                    {"processing_calls", processing_calls.load()},
+                    {"processing_batches", processing_batches.load()},
+                    {"batched_frames", batched_frames.load()},
                     {"completed_scans", completed_scans.load()},
                     {"published", published.load()}, {"pressure", h.pressure},
                     {"slot_wait_ns", slot_wait_ns.load()},
@@ -261,8 +266,8 @@ private:
         throw std::runtime_error("processing cancelled");
     }
     void produce(std::stop_token stop) {
-        std::ifstream data(cfg.file.parent_path() / "compressed.bin", std::ios::binary);
-        if(!data) throw std::runtime_error("cannot open compressed.bin");
+        std::ifstream data(cfg.file.parent_path() / cfg.scan.value("payload_file", "compressed.bin"), std::ios::binary);
+        if(!data) throw std::runtime_error("cannot open detector payload file");
         for(std::uint64_t cycle = 0; !cfg.scan_count || cycle < cfg.scan_count; ++cycle) {
           if(cycle && finish_requested.load()) break;
           const auto next_scan = std::chrono::steady_clock::now() +
@@ -272,15 +277,16 @@ private:
           for(const auto &entry : cfg.scan.at("frames")) {
             auto slot = acquire(stop);
             const auto bytes = entry.at("bytes").get<std::size_t>();
-            if(bytes > slot.payload().size()) throw std::runtime_error("compressed frame too large");
+            if(bytes > slot.payload().size()) throw std::runtime_error("detector frame too large");
             data.read(reinterpret_cast<char *>(slot.payload().data()),
                       static_cast<std::streamsize>(bytes));
-            if(!data) throw std::runtime_error("truncated compressed scan");
+            if(!data) throw std::runtime_error("truncated detector scan");
             Fields fields{entry.at("kind"), entry.at("projection"), entry.at("theta"),
                           cfg.scan.at("scan_id").get<std::uint64_t>() + cycle,
                           cfg.scan.at("calibration_id").get<std::uint64_t>() + cycle};
             std::memcpy(slot.fields().data(), &fields, sizeof(fields));
-            std::move(slot).publish_bytes(bytes);
+            if(cfg.scan.value("codec", "lz4-raw") == "raw") std::move(slot).publish();
+            else std::move(slot).publish_bytes(bytes);
             ++processed;
             ++published;
           }
@@ -361,39 +367,78 @@ private:
                                 ++completed_scans;
                             }
                         };
+                        auto emits_frame = [&](const Fields &fields) {
+                            return cfg.role == "decompress" ||
+                                (cfg.role == "correct" && fields.kind == 2) ||
+                                (cfg.role == "reconstruct" && !block_output && fields.projection + 1 ==
+                                    cfg.scan.at("angles").get<std::uint64_t>());
+                        };
+                        auto publish_blocks = [&](const Fields &fields, std::uint64_t timestamp) {
+                            if(!block_output || fields.projection + 1 != cfg.scan.at("angles").get<std::uint64_t>())
+                                return;
+                            const auto rows = cfg.scan.at("rows").get<std::uint64_t>();
+                            if(!block_rows || block_rows > output_rows)
+                                throw std::runtime_error("reconstruction block exceeds fixed output capacity");
+                            for(std::uint64_t begin = 0; begin < rows; begin += block_rows) {
+                                const auto count = std::min(block_rows, rows - begin);
+                                auto slot = [&] {
+                                    py::gil_scoped_release release;
+                                    return acquire(stop);
+                                }();
+                                auto pointer = slot.gpu_payload(GpuStream{stream});
+                                processor.attr("reconstruct_block")(
+                                    reinterpret_cast<std::uintptr_t>(pointer), begin, count);
+                                BlockFields block_fields{fields, settings_revision, begin, count};
+                                std::memcpy(slot.fields().data(), &block_fields, sizeof(block_fields));
+                                std::move(slot).publish(timestamp);
+                                ++published;
+                            }
+                        };
                         auto view = std::move(*batch).gpu_view(GpuStream{stream});
                         for(std::size_t frame = 0; frame < frames.size();) {
                             const auto &fields = frames[frame].fields;
                             const auto timestamp = frames[frame].timestamp;
                             begin_frame(fields);
-                            if(cfg.role == "decompress" && cfg.processing_mode == "batched") {
+                            if(cfg.processing_mode == "batched") {
                                 auto end = std::min(frames.size(), frame + cfg.processing_batch);
                                 for(auto i = frame + 1; i < end; ++i)
                                     if(frames[i].fields.scan_id != fields.scan_id) { end = i; break; }
                                 if(end - frame > 1) {
-                                    std::vector<Slot> outputs;
-                                    outputs.reserve(end - frame);
+                                    std::vector<std::optional<Slot>> outputs(end - frame);
                                     py::list arguments;
                                     for(auto i = frame; i < end; ++i) {
                                         if(frames[i].fields.calibration_id != calibration)
                                             throw std::runtime_error("calibration changed within a scan");
-                                        {
-                                            py::gil_scoped_release release;
-                                            outputs.emplace_back(acquire(stop));
+                                        void *destination = nullptr;
+                                        if(emits_frame(frames[i].fields)) {
+                                            auto &slot = outputs[i - frame];
+                                            {
+                                                py::gil_scoped_release release;
+                                                slot.emplace(acquire(stop));
+                                            }
+                                            destination = slot->gpu_payload(GpuStream{stream});
+                                            std::memcpy(slot->fields().data(), &frames[i].fields, sizeof(Fields));
                                         }
-                                        auto &slot = outputs.back();
-                                        auto destination = slot.gpu_payload(GpuStream{stream});
-                                        std::memcpy(slot.fields().data(), &frames[i].fields, sizeof(Fields));
                                         arguments.append(py::make_tuple(
                                             reinterpret_cast<std::uintptr_t>(view.payload(i)), view.payload_bytes(i),
                                             reinterpret_cast<std::uintptr_t>(destination), frames[i].fields.kind,
                                             frames[i].fields.projection, frames[i].fields.theta));
                                     }
+                                    if(cfg.delay_ms) {
+                                        py::gil_scoped_release release;
+                                        std::this_thread::sleep_for(std::chrono::milliseconds(cfg.delay_ms) * (end - frame));
+                                    }
                                     processor.attr("consume_many")(arguments);
+                                    ++processing_calls;
+                                    ++processing_batches;
+                                    batched_frames += end - frame;
                                     if(end == frames.size()) view = GpuView{};
                                     for(auto i = frame; i < end; ++i) {
-                                        std::move(outputs[i - frame]).publish(frames[i].timestamp);
-                                        ++published;
+                                        if(auto &slot = outputs[i - frame]; slot) {
+                                            std::move(*slot).publish(frames[i].timestamp);
+                                            ++published;
+                                        }
+                                        publish_blocks(frames[i].fields, frames[i].timestamp);
                                         complete_frame(frames[i].fields);
                                     }
                                     frame = end;
@@ -404,13 +449,9 @@ private:
                                 py::gil_scoped_release release;
                                 std::this_thread::sleep_for(std::chrono::milliseconds(cfg.delay_ms));
                             }
-                            const bool emits = cfg.role == "decompress" ||
-                                (cfg.role == "correct" && fields.kind == 2) ||
-                                (cfg.role == "reconstruct" && !block_output && fields.projection + 1 ==
-                                    cfg.scan.at("angles").get<std::uint64_t>());
                             std::optional<Slot> output;
                             void *destination = nullptr;
-                            if(emits) {
+                            if(emits_frame(fields)) {
                                 {
                                     py::gil_scoped_release release;
                                     output.emplace(acquire(stop));
@@ -422,28 +463,11 @@ private:
                                 reinterpret_cast<std::uintptr_t>(view.payload(frame)), view.payload_bytes(frame),
                                 reinterpret_cast<std::uintptr_t>(destination),
                                 fields.kind, fields.projection, fields.theta);
+                            ++processing_calls;
                             // One receive view owns the whole transport batch. Release after
                             // its last queued read, before final-frame output credit waits.
                             if(frame + 1 == frames.size()) view = GpuView{};
-                            if(block_output && fields.projection + 1 == cfg.scan.at("angles").get<std::uint64_t>()) {
-                                const auto rows = cfg.scan.at("rows").get<std::uint64_t>();
-                                if(!block_rows || block_rows > output_rows)
-                                    throw std::runtime_error("reconstruction block exceeds fixed output capacity");
-                                for(std::uint64_t begin = 0; begin < rows; begin += block_rows) {
-                                    const auto count = std::min(block_rows, rows - begin);
-                                    auto slot = [&] {
-                                        py::gil_scoped_release release;
-                                        return acquire(stop);
-                                    }();
-                                    auto pointer = slot.gpu_payload(GpuStream{stream});
-                                    processor.attr("reconstruct_block")(
-                                        reinterpret_cast<std::uintptr_t>(pointer), begin, count);
-                                    BlockFields block_fields{fields, settings_revision, begin, count};
-                                    std::memcpy(slot.fields().data(), &block_fields, sizeof(block_fields));
-                                    std::move(slot).publish(timestamp);
-                                    ++published;
-                                }
-                            }
+                            publish_blocks(fields, timestamp);
                             // Receive completion follows the last queued read. Publication separately
                             // follows the writes to this GPU source slot on the same CUDA stream.
                             if(output) {
@@ -484,6 +508,7 @@ private:
     std::unique_ptr<ReconstructionSettings> reconstruction;
     std::atomic<std::uint64_t> processed{0}, published{0}, slot_wait_ns{0}, completed_scans{0};
     std::atomic<bool> finish_requested{false};
+    std::atomic<std::uint64_t> processing_calls{0}, processing_batches{0}, batched_frames{0};
     std::string failure;
 };
 class Command : public Tango::Command {

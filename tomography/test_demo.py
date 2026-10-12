@@ -7,11 +7,25 @@ import unittest
 from unittest.mock import patch
 
 from demo import (buffering_options, device_command, launch_environment, parse_args,
-                  reconstruction_options, pipeline_args, pipeline_options)
+                  reconstruction_options, pipeline_args, pipeline_options, pipeline_roles)
 from host_buffering import memory_plan
 
 
 class LaunchPolicyTests(unittest.TestCase):
+    def test_benchmark_switches_remove_decompression_and_preserve_restart_settings(self):
+        args = parse_args(["--no-decompress", "--no-save", "--no-verify"])
+        self.assertEqual(pipeline_roles(args), ("source", "correct", "reconstruct"))
+        self.assertFalse(args.decompress or args.save or args.verify)
+        command = device_command(args, "correct", Path("/tmp/run"), 1234, "device",
+                                 dict(source="raw-source"))
+        self.assertEqual(command[command.index("--upstream") + 1], "raw-source")
+        options = pipeline_options(args)
+        self.assertEqual({key: options[key] for key in ("verify", "save", "decompress")},
+                         dict(verify=False, save=False, decompress=False))
+        restarted = pipeline_args(args, dict(options, receive_budget_mib=1))
+        self.assertFalse(restarted.decompress or restarted.save or restarted.verify)
+        self.assertEqual(pipeline_roles(parse_args([])), ("source", "decompress", "correct", "reconstruct"))
+
     def test_restart_keeps_live_reconstruction_and_separates_batch_controls(self):
         original = parse_args(["--algorithm", "fbp", "--live"])
         options = pipeline_options(original)
@@ -26,7 +40,35 @@ class LaunchPolicyTests(unittest.TestCase):
         self.assertEqual(updated.slices_per_block, original.slices)
         self.assertEqual(reconstruction_options(updated)["filter_cutoff"], .7)
         self.assertEqual(reconstruction_options(updated)["gaussian_fwhm"], 2)
-        self.assertEqual(original.transport_batch, 1)
+        self.assertEqual(original.transport_batch, 16)
+
+    def test_batch_defaults_and_stage_overrides_reach_only_the_selected_device(self):
+        args = parse_args(["--decompress-batch", "8", "--correct-batch", "4",
+                           "--reconstruct-mode", "scalar"])
+        self.assertEqual((args.transport_batch, args.processing_batch, args.processing_mode),
+                         (16, 16, "batched"))
+        upstream = dict(source="source", decompress="decompress", correct="correct")
+        for role, batch, mode in (("decompress", 8, "batched"), ("correct", 4, "batched"),
+                                  ("reconstruct", 16, "scalar")):
+            command = device_command(args, role, Path("/tmp/run"), 1234, "device", upstream)
+            self.assertEqual(command[command.index("--processing-batch") + 1], str(batch))
+            self.assertEqual(command[command.index("--processing-mode") + 1], mode)
+        options = pipeline_options(args)
+        options.update(correct_batch=12, correct_mode="scalar", receive_budget_mib=1)
+        restarted = pipeline_args(args, options)
+        self.assertEqual((restarted.correct_batch, restarted.correct_mode), (12, "scalar"))
+        self.assertEqual(restarted.decompress_batch, 8)
+        self.assertEqual(args.correct_batch, 4)
+
+    def test_processing_limits_are_capped_by_transport_without_changing_stage_settings(self):
+        args = parse_args(["--transport-batch", "4", "--correct-batch", "8"])
+        command = device_command(args, "correct", Path("/tmp/run"), 1234, "device",
+                                 dict(decompress="upstream"))
+        self.assertEqual(command[command.index("--processing-batch") + 1], "4")
+        self.assertEqual(args.correct_batch, 8)
+        for role in ("decompress", "correct", "reconstruct"):
+            with redirect_stderr(StringIO()), self.assertRaises(SystemExit):
+                parse_args([f"--{role}-batch", "17"])
 
     def test_unsafe_restart_is_rejected_before_changing_running_arguments(self):
         original = parse_args(["--pixels", "256", "--slices", "128", "--algorithm", "fbp"])

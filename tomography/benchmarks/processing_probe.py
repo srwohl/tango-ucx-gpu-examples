@@ -72,6 +72,13 @@ def run_gpu(meta, dark, flat, raw, directory, frames, repeats):
         with stream:
             correct.correct(batch_raw, correct.dark, correct.flat, batch_output)
 
+    batch_inputs = [batch_raw[i].data.ptr for i in range(16)]
+    batch_outputs = [batch_output[i].data.ptr for i in range(16)]
+    def correction_batch(index):
+        first = index * 16
+        correct.consume_many([(source, raw.nbytes, output, 2, first + i, meta["theta"][first + i])
+                              for i, (source, output) in enumerate(zip(batch_inputs, batch_outputs))])
+
     def decompression(index):
         f = meta["frames"][index]
         decompress.consume(compressed[index].data.ptr, f["bytes"], decoded.data.ptr,
@@ -81,6 +88,7 @@ def run_gpu(meta, dark, flat, raw, directory, frames, repeats):
     for stage, operation, count in (("correction_kernel", kernel, frames),
                                     ("correction_kernel_batch16", batch_kernel, frames // 16),
                                     ("correction_consume", correction, frames),
+                                    ("correction_consume_batch16", correction_batch, frames // 16),
                                     ("decompression_consume", decompression, frames + 2)):
         for sync in (True, False):
             samples = []
@@ -88,7 +96,7 @@ def run_gpu(meta, dark, flat, raw, directory, frames, repeats):
                 calibration()
                 decompress.begin_scan()
                 sample = measure(operation, stream, count, sync)
-                if stage == "correction_kernel_batch16":
+                if stage.endswith("batch16"):
                     sample["kernel_calls"] = sample["frames"]
                     sample["frames"] *= 16
                     sample["frames_per_second"] *= 16
@@ -122,6 +130,7 @@ def main():
         "Same stream/buffers reused safely; end_only queues frames, synchronizes once at end.",
         "correction_consume includes Python validation and borrowed-pointer views; kernel isolates launch/work.",
         "correction_kernel_batch16 uses one GPU kernel for 16 projections, rounds frame count down to multiple16.",
+        "correction_consume_batch16 includes group validation and a by-value pointer table, writes directly to output slots.",
         "decompression_consume includes application scratch copy, nvCOMP decode and Python wrapper costs.",
         "Input MiB/s uses uncompressed uint16 bytes; correction outputs twice that byte count."])
     try:

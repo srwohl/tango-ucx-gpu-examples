@@ -223,17 +223,50 @@ GPUDirect. Inspect UCX protocol output and CUDA traces on the deployment. GridRe
 reconstruction; archive, writer and viewer receive host data. For inter-node launches, see
 [the separate-node examples](../README.md#run-on-separate-nodes).
 
-`--transport-batch` limits frames per receive batch. `--processing-batch` limits nvCOMP
-list decoding in `--processing-mode batched`; it cannot exceed the transport batch.
-Correction and reconstruction process frames individually. Batches can be shorter at
-scan boundaries or when the receive wait expires. For the small phantom:
+The demo defaults to `--transport-batch 16 --processing-batch 16 --processing-mode batched`.
+Decompression uses nvCOMP list decoding. Dark/flat correction launches one kernel for a
+group of projections, writing directly into separate publisher slots without payload staging.
+GPU reconstruction input is packed into the retained sinogram with one kernel per group;
+host sinograms retain their bounded pinned transfers. Reconstruction runs after the scan
+is complete, using the algorithm and `--slices-per-block` settings described above.
+
+`--transport-batch` limits frames per receive batch. `--processing-batch` is the shared
+upper limit for a processing group, capped by the transport batch. Each stage can override
+the shared size and mode with `--decompress-batch` / `--decompress-mode`,
+`--correct-batch` / `--correct-mode`, and `--reconstruct-batch` / `--reconstruct-mode`.
+Batches can be shorter at scan boundaries, calibration transitions or when the receive
+wait expires. Dark and flat updates remain ordered before their matching projections.
+For example:
 
 ```sh
-pixi run tomography --transport-batch 16 --processing-batch 16 \
-  --processing-mode batched --budget 1048576
+pixi run tomography --decompress-batch 16 --correct-batch 8 --reconstruct-batch 16 \
+  --algorithm fbp --slices-per-block 4 --budget 1048576
+pixi run tomography --processing-mode scalar --transport-batch 1
 ```
 
-The viewer's **Acquisition settings** can change transport, GPUs, batching, memory modes,
+Stage reports include processing calls, batched calls and frames processed in groups,
+so a requested batch size can be compared with the groups actually received.
+
+For performance comparisons, verification, saving and decompression can be disabled independently:
+
+```sh
+pixi run tomography --algorithm fbp --scan-period 0 --scans 100 \
+  --no-verify --no-save --no-decompress
+```
+
+`--no-verify` skips independent reconstruction, numeric comparison and phantom-error
+calculation. `--no-save` removes the detector archive subscriber, per-volume files and
+final plots; prepared input, logs and small run summaries remain. `--no-decompress`
+publishes original uint16/float32 detector frames straight from the source to correction,
+removing the decompression server and its transport link. All three default to enabled,
+and the viewer exposes the same choices when restarting acquisition. Frame counts,
+scan identity and transport failures are checked in every mode.
+
+Each completed-volume log entry has an acquisition-relative timestamp. Use intervals
+after warm-up volumes to compare steady processing; `acquisition_seconds` stops at the
+last volume, while `elapsed_seconds` also includes the final archive drain.
+
+The viewer's **Acquisition settings** can change transport, GPUs, shared and per-stage batching, memory modes,
 budgets, pacing and synthetic dimensions through **Restart after current scan**.
 **Size buffers for this scan** prepares budget values for review. Restart drains and
 verifies the current run, retains its output and creates `run-0001`, etc. below it.
@@ -328,7 +361,7 @@ Algorithm selection is independent. Each scan also contains one dark and one fla
 ```sh
 pixi run tomography-live --stress --output results/tomography-stress
 pixi run tomography-live --gpu-stress --algorithm sirt --output results/tomography-gpu-stress
-pixi run tomography --budget 131072 --correction-delay-ms 3 --output results/tomography-pressure
+pixi run tomography --budget 131072 --transport-batch 1 --correction-delay-ms 3 --output results/tomography-pressure
 pixi run test-pipeline
 pixi run python -m unittest discover -s tomography -p 'test_*.py'
 ```

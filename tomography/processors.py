@@ -15,6 +15,16 @@ def array_at(pointer, shape, dtype, gpu):
     return cp.ndarray(shape, dtype=dtype, memptr=cp.cuda.MemoryPointer(memory, 0))
 
 
+def frame_pointers(frames):
+    # Pass the small pointer table by value in the kernel launch. Payloads stay in
+    # their borrowed receive/publisher slots; no pointer-table GPU upload is needed.
+    pointers = np.zeros((), dtype=[("inputs", np.uint64, (16,)),
+                                  ("outputs", np.uint64, (16,))])
+    pointers["inputs"][:len(frames)] = [frame[0] for frame in frames]
+    pointers["outputs"][:len(frames)] = [frame[2] for frame in frames]
+    return pointers[()]
+
+
 class Processor:
     def __init__(self, role, scan, gpu, stream_pointer, iterations):
         self.role, self.scan, self.gpu = role, scan, gpu
@@ -271,19 +281,25 @@ class Processor:
             self.projections += 1
 
     def consume_many(self, frames):
-        """Consume one ordered, same-scan group; batch only independent LZ4 frames.
+        """Consume one ordered group from a scan on the caller's tracked stream.
 
         C++ retains input/output allocations through queued stream work. No borrowed
-        arrays are cached here; owned aligned scratch is reused on this same stream.
+        arrays are cached here. Correction writes directly to independent output
+        slots; reconstruction packs GPU input directly into its retained sinogram.
         """
         if not frames:
             return
-        if len(frames) == 1 or self.role != "decompress":
-            for frame in frames:
-                self.consume(*frame)
-            return
         if len(frames) > 16:
-            raise ValueError("decompression batch exceeds the supported capacity of 16")
+            raise ValueError("processing batch exceeds the supported capacity of 16")
+        if len(frames) == 1:
+            self.consume(*frames[0])
+            return
+        if self.role == "correct":
+            self._correct_many(frames)
+            return
+        if self.role == "reconstruct":
+            self._reconstruct_many(frames)
+            return
         # Reject the whole group before queuing reads or changing scan counters.
         for index, (_, nbytes, _, kind, projection, _) in enumerate(frames):
             received = self.received + index
@@ -313,6 +329,101 @@ class Processor:
                                         cp.uint8, self.gpu))
             self.codec.decode(sources, out=outputs, decompression_config=self.batch_decoding[count])
             self.received += count
+
+    def _validate_projections(self, frames, first):
+        if first + len(frames) > len(self.theta):
+            raise ValueError("projection batch extends beyond the scan")
+        if any(frame[3] != 2 or frame[4] != first + i for i, frame in enumerate(frames)):
+            raise ValueError("missing or out-of-order projection")
+        if not np.allclose([frame[5] for frame in frames], self.theta[first:first + len(frames)]):
+            raise ValueError("projection index or angle changed")
+
+    def _correct_many(self, frames):
+        # Validate calibration and every projection before queuing any reads or
+        # changing state. A transport batch can contain dark, flat and projections.
+        dark, flat, start = self.dark_seen, self.flat_seen, 0
+        for i, frame in enumerate(frames):
+            if frame[1] != self.detector_frame_bytes:
+                raise ValueError("upstream array length differs from the scan")
+            kind = frame[3]
+            if kind == 0 and not dark and not flat:
+                dark = True
+                start = i + 1
+            elif kind == 1 and dark and not flat:
+                flat = True
+                start = i + 1
+            elif kind != 2 or not flat:
+                raise ValueError("projection arrived without matching dark and flat")
+        projections = frames[start:]
+        self._validate_projections(projections, self.projections)
+        if any(not frame[2] for frame in projections):
+            raise ValueError("correction needs a publisher output for each projection")
+        with self.stream:
+            for frame in frames[:start]:
+                self.consume(*frame)
+            if not projections:
+                return
+            if not hasattr(self, "correct_frames"):
+                raw_type = "unsigned short" if self.detector_dtype == cp.dtype("uint16") else "float"
+                self.correct_frames = cp.RawKernel(r'''
+                    struct Frames { unsigned long long inputs[16], outputs[16]; };
+                    extern "C" __global__ void correct_frames(Frames frames, const float *dark,
+                        const float *flat, unsigned long long pixels, unsigned long long count) {
+                        for (unsigned long long i = (unsigned long long)blockIdx.x * blockDim.x + threadIdx.x;
+                             i < count * pixels; i += (unsigned long long)blockDim.x * gridDim.x) {
+                            const auto frame = i / pixels, pixel = i % pixels;
+                            const RAW_TYPE *raw = (const RAW_TYPE *)frames.inputs[frame];
+                            float *output = (float *)frames.outputs[frame];
+                            float t = (float(raw[pixel]) - dark[pixel]) / (flat[pixel] - dark[pixel]);
+                            output[pixel] = -logf(fminf(1.0f, fmaxf(1e-6f, t)));
+                        }
+                    }
+                '''.replace("RAW_TYPE", raw_type), "correct_frames")
+            pixels = int(np.prod(self.shape))
+            count = len(projections)
+            self.correct_frames((min(65535, (pixels * count + 255) // 256),), (256,),
+                                (frame_pointers(projections), self.dark, self.flat,
+                                 np.uint64(pixels), np.uint64(count)))
+            self.projections += count
+
+    def _reconstruct_many(self, frames):
+        if any(frame[1] != int(np.prod(self.shape)) * 4 for frame in frames):
+            raise ValueError("upstream array length differs from the scan")
+        self._validate_projections(frames, self.projections)
+        final = self.projections + len(frames) == self.scan["angles"]
+        if final and self.buffer_plan["output_mode"] != "blocks" and not frames[-1][2]:
+            raise ValueError("reconstruction needs a publisher output at the end of the scan")
+        with self.stream:
+            if hasattr(self, "host_buffer"):
+                for pointer, _, _, _, projection, _ in frames:
+                    self.host_buffer.append(array_at(pointer, self.shape, cp.float32, self.gpu), projection)
+            else:
+                if not hasattr(self, "pack_frames"):
+                    self.pack_frames = cp.RawKernel(r'''
+                        struct Frames { unsigned long long inputs[16], outputs[16]; };
+                        extern "C" __global__ void pack_frames(Frames frames, float *sinogram,
+                            unsigned long long pixels, unsigned long long columns,
+                            unsigned long long angles, unsigned long long first, unsigned long long count) {
+                            for (unsigned long long i = (unsigned long long)blockIdx.x * blockDim.x + threadIdx.x;
+                                 i < count * pixels; i += (unsigned long long)blockDim.x * gridDim.x) {
+                                const auto frame = i / pixels, pixel = i % pixels;
+                                const float *input = (const float *)frames.inputs[frame];
+                                sinogram[((pixel / columns) * angles + first + frame) * columns + pixel % columns]
+                                    = input[pixel];
+                            }
+                        }
+                    ''', "pack_frames")
+                pixels = int(np.prod(self.shape))
+                count = len(frames)
+                self.pack_frames((min(65535, (pixels * count + 255) // 256),), (256,),
+                                 (frame_pointers(frames), self.sinogram, np.uint64(pixels),
+                                  np.uint64(self.shape[1]), np.uint64(self.scan["angles"]),
+                                  np.uint64(self.projections), np.uint64(count)))
+            self.projections += len(frames)
+            if final and self.buffer_plan["output_mode"] != "blocks":
+                output = array_at(frames[-1][2], (self.scan["rows"], self.scan["columns"],
+                                  self.scan["columns"]), cp.float32, self.gpu)
+                self.reconstruct(output)
 
     def finish(self):
         if self.role == "decompress" and self.received != self.scan["angles"] + 2:

@@ -13,12 +13,17 @@ CHOICES = {
     "sinogram_memory": ("gpu", "host"),
     "output_mode": ("volume", "blocks"),
 }
-BATCH_KEYS = {"transport_batch", "processing_batch"}
+PROCESSING_ROLES = ("decompress", "correct", "reconstruct")
+STAGE_BATCH_KEYS = {f"{role}_batch" for role in PROCESSING_ROLES}
+STAGE_MODE_KEYS = {f"{role}_mode" for role in PROCESSING_ROLES}
+CHOICES.update({key: ("scalar", "batched") for key in STAGE_MODE_KEYS})
+BATCH_KEYS = {"transport_batch", "processing_batch"} | STAGE_BATCH_KEYS
 GPU_KEYS = {"gpu", "decompress_gpu", "correct_gpu", "reconstruct_gpu"}
 MEMORY_KEYS = {"host_buffer_mib", "pinned_buffer_mib", "output_host_mib"}
 FLOAT_KEYS = {"receive_budget_mib", "scan_period"}
 GEOMETRY_KEYS = {"pixels", "slices", "angles"}
-OPTION_KEYS = set(CHOICES) | BATCH_KEYS | GPU_KEYS | MEMORY_KEYS | FLOAT_KEYS | GEOMETRY_KEYS | {"net_devices"}
+BOOL_KEYS = {"verify", "save", "decompress"}
+OPTION_KEYS = set(CHOICES) | BATCH_KEYS | GPU_KEYS | MEMORY_KEYS | FLOAT_KEYS | GEOMETRY_KEYS | BOOL_KEYS | {"net_devices"}
 
 
 class PipelineConflict(RuntimeError):
@@ -34,7 +39,12 @@ def validate_options(options, gpu_count=None):
         raise ValueError(f"unknown pipeline settings: {', '.join(sorted(unknown))}")
     result = dict(options)
     for key, value in result.items():
-        if key in CHOICES:
+        if key in STAGE_BATCH_KEYS | STAGE_MODE_KEYS and value is None:
+            continue  # Inherit the shared processing setting.
+        if key in BOOL_KEYS:
+            if type(value) is not bool:
+                raise ValueError(f"{key} must be a boolean")
+        elif key in CHOICES:
             if not isinstance(value, str) or value not in CHOICES[key]:
                 raise ValueError(f"{key} must be one of {', '.join(CHOICES[key])}")
         elif key == "net_devices":
@@ -59,10 +69,14 @@ def validate_options(options, gpu_count=None):
                 raise ValueError(f"{key} must be a finite number")
             if value < 0 or (key == "receive_budget_mib" and value == 0):
                 raise ValueError(f"{key} must be {'positive' if key == 'receive_budget_mib' else 'nonnegative'}")
-    if (result.get("processing_mode") == "batched" and "processing_batch" in result and
-            "transport_batch" in result and result["processing_batch"] > result["transport_batch"]):
-        raise ValueError("batched decompression processing_batch must not exceed transport_batch")
     return result
+
+
+def stage_processing(options, role):
+    """Resolve stage overrides; a processing group cannot exceed its receive batch."""
+    batch = options.get(f"{role}_batch") or options["processing_batch"]
+    mode = options.get(f"{role}_mode") or options["processing_mode"]
+    return dict(batch=min(batch, options["transport_batch"]), mode=mode)
 
 
 def atomic_json(path, value):
