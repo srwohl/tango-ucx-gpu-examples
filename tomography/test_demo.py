@@ -1,13 +1,15 @@
 """Launcher policy checks without a GPU or device servers."""
 from contextlib import redirect_stderr
 from io import StringIO
+import json
 import os
 from pathlib import Path
 import unittest
 from unittest.mock import patch
 
 from demo import (buffering_options, device_command, launch_environment, parse_args,
-                  reconstruction_options, pipeline_args, pipeline_options, pipeline_roles)
+                  reconstruction_options, pipeline_args, pipeline_options, pipeline_roles,
+                  combined_report, reconstructor_names, stage_names)
 from host_buffering import memory_plan
 
 
@@ -15,16 +17,30 @@ class LaunchPolicyTests(unittest.TestCase):
     def test_benchmark_switches_remove_decompression_and_preserve_restart_settings(self):
         args = parse_args(["--no-decompress", "--no-save", "--no-verify"])
         self.assertEqual(pipeline_roles(args), ("source", "correct", "reconstruct"))
-        self.assertFalse(args.decompress or args.save or args.verify)
+        self.assertFalse(args.decompression or args.saving or args.verify_volumes)
         command = device_command(args, "correct", Path("/tmp/run"), 1234, "device",
                                  dict(source="raw-source"))
         self.assertEqual(command[command.index("--upstream") + 1], "raw-source")
         options = pipeline_options(args)
-        self.assertEqual({key: options[key] for key in ("verify", "save", "decompress")},
-                         dict(verify=False, save=False, decompress=False))
+        self.assertEqual({key: options[key] for key in ("verify_volumes", "saving", "decompression")},
+                         dict(verify_volumes=False, saving=False, decompression=False))
         restarted = pipeline_args(args, dict(options, receive_budget_mib=1))
-        self.assertFalse(restarted.decompress or restarted.save or restarted.verify)
+        self.assertFalse(restarted.decompression or restarted.saving or restarted.verify_volumes)
         self.assertEqual(pipeline_roles(parse_args([])), ("source", "decompress", "correct", "reconstruct"))
+    def test_optional_saving_and_decoder_survive_restart(self):
+        original = parse_args([])
+        self.assertTrue(original.saving)
+        self.assertTrue(original.decompression)
+        args = parse_args(["--no-saving", "--no-decompression"])
+        restarted = pipeline_args(original, pipeline_options(args))
+        self.assertFalse(restarted.saving)
+        self.assertEqual(stage_names(restarted)["decompress"], [])
+        command = device_command(restarted, "correct", Path("/tmp/run"), 1234,
+                                 "correct", {"source": "raw-source"})
+        self.assertEqual(command[command.index("--upstream") + 1], "raw-source")
+        restarted = pipeline_args(restarted, dict(saving=True, decompression=True))
+        self.assertTrue(restarted.saving)
+        self.assertEqual(stage_names(restarted)["decompress"], ["decompress"])
 
     def test_restart_keeps_live_reconstruction_and_separates_batch_controls(self):
         original = parse_args(["--algorithm", "fbp", "--live"])
@@ -68,7 +84,7 @@ class LaunchPolicyTests(unittest.TestCase):
         self.assertEqual(args.correct_batch, 8)
         for role in ("decompress", "correct", "reconstruct"):
             with redirect_stderr(StringIO()), self.assertRaises(SystemExit):
-                parse_args([f"--{role}-batch", "17"])
+                parse_args([f"--{role}-batch", "513"])
 
     def test_unsafe_restart_is_rejected_before_changing_running_arguments(self):
         original = parse_args(["--pixels", "256", "--slices", "128", "--algorithm", "fbp"])
@@ -167,6 +183,102 @@ class LaunchPolicyTests(unittest.TestCase):
                         self.assertIn(value("--upstream"), upstream.values())
                     else:
                         self.assertNotIn("--upstream", command)
+
+    def test_reconstructors_form_a_pull_set_whose_ring_holds_one_scan(self):
+        single = parse_args([])
+        self.assertEqual(reconstructor_names(single), ["reconstruct"])
+        args = parse_args(["--gpu-stress", "--reconstructors", "3", "--transport-batch", "16",
+                           "--reconstruct-gpu", "2"])
+        names = reconstructor_names(args)
+        self.assertEqual(names, ["reconstruct-0", "reconstruct-1", "reconstruct-2"])
+        # One scan of corrected frames and a spare batch fit each puller's receive ring.
+        self.assertGreaterEqual(args.budget, (720 + 16) * 128 * 256 * 4)
+        upstream = dict(correct="correct-address")
+        for role in ("correct", names[1]):
+            command = device_command(args, role, Path("/tmp/run"), 1234, "device-name",
+                                     dict(upstream, decompress="decode-address"))
+            self.assertEqual(command[command.index("--role") + 1], role.partition("-")[0])
+            self.assertEqual(command[command.index("--reconstructors") + 1], "3")
+        self.assertEqual(command[command.index("--gpu") + 1], "2")
+        self.assertEqual(command[command.index("--upstream") + 1], "correct-address")
+        self.assertEqual(pipeline_options(args)["reconstructors"], 3)
+        for flags, error in ((["--reconstructors", "2", "--angles", "90", "--transport-batch", "16"], "multiple"),
+                             (["--reconstructors", "2", "--output-mode", "blocks", "--slices-per-block", "2"],
+                              "one reconstructor"),
+                             (["--reconstructors", "2", "--budget", "262144"], "holding one scan"),
+                             (["--reconstructors", "2", "--angles", "5008"], "4096 frames"),
+                             (["--reconstructors", "9"], "invalid choice")):
+            message = StringIO()
+            with self.subTest(flags=flags), redirect_stderr(message), self.assertRaises(SystemExit):
+                parse_args(flags)
+            self.assertIn(error, message.getvalue())
+        live = parse_args(["--live", "--algorithm", "fbp"])
+        self.assertEqual(pipeline_args(live, dict(pipeline_options(live), reconstructors=2,
+                                                 receive_budget_mib=1)).reconstructors, 2)
+        with self.assertRaisesRegex(ValueError, "multiple"):
+            pipeline_args(live, dict(pipeline_options(live), reconstructors=2, transport_batch=5,
+                                     receive_budget_mib=1))
+
+    def test_volume_verification_is_on_unless_switched_off(self):
+        self.assertTrue(parse_args([]).verify_volumes)
+        self.assertFalse(parse_args(["--no-verify-volumes"]).verify_volumes)
+
+    def test_reconstruction_stage_report_sums_the_pull_set(self):
+        report = dict(processed=720, published=1, completed_scans=1, slot_wait_ns=5, reconstruct_ns=7,
+                      quarantined_bytes=0, pressure=False, failure="", input_failure="",
+                      payload_bytes=64, input_transport="cuda_ipc")
+        combined = combined_report([report, dict(report, published=2, completed_scans=2, pressure=True)])
+        self.assertEqual((combined["published"], combined["completed_scans"], combined["reconstruct_ns"]),
+                         (3, 3, 14))
+        self.assertTrue(combined["pressure"])
+        self.assertEqual((combined["payload_bytes"], combined["failure"]), (64, ""))
+        self.assertEqual(len(combined["reconstructors"]), 2)
+        self.assertEqual(combined_report([report])["published"], 1)
+
+    def test_sliding_window_updates_and_slice_output_reach_the_scan_and_survive_restart(self):
+        args = parse_args(["--algorithm", "fbp", "--update-projections", "16"])
+        self.assertEqual(buffering_options(args), dict(buffering_options(parse_args([])), update_projections=16))
+        self.assertEqual(pipeline_options(args)["update_projections"], 16)
+        tilted = [dict(origin=[4, 0, 0], u=[0, 1, 0], v=[0, 0, 1]),
+                  dict(origin=[-2.5, 30, 1], u=[.9, .2, 0], v=[0, 0, 1.5]),
+                  dict(origin=[0, 0, 32], u=[1, 0, 0], v=[0, 1, 0])]
+        args = parse_args(["--output-mode", "slices", "--slice-planes", json.dumps(tilted), "--live"])
+        self.assertEqual(args.algorithm, "fbp")
+        buffers = buffering_options(args)
+        self.assertEqual((buffers["output_mode"], buffers["slice_planes"][1]["origin"]), ("slices", [-2.5, 30.0, 1.0]))
+        self.assertNotIn("update_projections", buffers)
+        plan = memory_plan(dict(rows=8, columns=64, angles=96, buffering=buffers), reconstruction_options(args))
+        self.assertEqual((plan["slice_size"], plan["gpu_output_bytes"]), (64, 3 * 64 * 64 * 4))
+        # Planes moved in the viewer outlive a restart, unless the volume they index changes.
+        moved = dict(planes=tilted[::-1], revision=3)
+        restarted = pipeline_args(args, dict(pipeline_options(args), update_projections=8),
+                                  reconstruction_options(args), moved)
+        self.assertEqual((restarted.update_projections, restarted.slice_planes), (8, tilted[::-1]))
+        self.assertIsNone(pipeline_args(args, dict(pipeline_options(args), pixels=32),
+                                        reconstruction_options(args), moved).slice_planes)
+        self.assertIsNone(pipeline_args(args, dict(pipeline_options(args), output_mode="volume"),
+                                        reconstruction_options(args), moved).slice_planes)
+        # A full-size detector shows three slices where its volume would not fit the history.
+        larger = dict(pipeline_options(args), pixels=512, slices=256, receive_budget_mib=64.0)
+        self.assertEqual(pipeline_args(args, larger).output_mode, "slices")
+        with self.assertRaisesRegex(ValueError, "viewer history"):
+            pipeline_args(args, dict(larger, output_mode="volume"), reconstruction_options(args))
+        for options in (dict(update_projections=7), dict(reconstructors=2), dict(sinogram_memory="host")):
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                pipeline_args(args, dict(pipeline_options(args), **options))
+        for flags in (["--output-mode", "slices", "--algorithm", "sirt"],
+                      ["--output-mode", "slices", "--gaussian-fwhm", "1"],
+                      ["--output-mode", "slices", "--sinogram-memory", "host"],
+                      ["--output-mode", "slices", "--reconstructors", "2", "--angles", "96"],
+                      ["--output-mode", "slices", "--slice-planes", json.dumps(tilted[:2])],
+                      ["--output-mode", "slices", "--slice-planes", "not json"],
+                      ["--slice-planes", json.dumps(tilted)],
+                      ["--update-projections", "7"], ["--update-projections", "-16"],
+                      ["--update-projections", "16", "--sinogram-memory", "host"],
+                      ["--update-projections", "16", "--chains", "2", "--angles", "94"],
+                      ["--update-projections", "16", "--output-mode", "blocks", "--slices-per-block", "2"]):
+            with self.subTest(flags=flags), redirect_stderr(StringIO()), self.assertRaises(SystemExit):
+                parse_args(flags)
 
     def test_gpu_indices_are_logical_and_negative_values_are_rejected(self):
         args = parse_args(["--gpu", "4", "--decompress-gpu", "0", "--profile", "auto"])

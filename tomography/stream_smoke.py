@@ -13,7 +13,7 @@ import urllib.request
 
 from PIL import Image
 
-from reconstruction import ALGORITHMS, configuration
+from reconstruction import ALGORITHMS, available_algorithms, configuration
 
 
 def main():
@@ -67,7 +67,8 @@ def main():
                     payload = response.read()
                     if (response.headers["X-Volume-Shape"] != "8,64,64" or
                         int(response.headers["X-Volume-Version"]) != frame["version"] or
-                        len(payload) != 8 * 64 * 64 or min(payload) == max(payload)):
+                        response.headers["X-Volume-Format"] != "uint16-le-zyx" or
+                        len(payload) != 8 * 64 * 64 * 2 or min(payload) == max(payload)):
                         raise ValueError("live volume payload or identity differs")
                 for axis, index, expected in ((0, 4, (64,64)), (1, 32, (64,8)), (2, 32, (64,8))):
                     with urllib.request.urlopen(
@@ -76,7 +77,7 @@ def main():
                             if image.size != expected or image.getextrema()[0] == image.getextrema()[1]:
                                 raise ValueError("live view returned an empty or incorrect slice")
                 # Change every backend while the same four devices and subscriptions run.
-                for method in ALGORITHMS:
+                for method in available_algorithms():
                     settings = configuration(method, iterations=12, scale_factor=1.2)
                     request = urllib.request.Request(url + "/api/reconstruction",
                         data=json.dumps(settings).encode(), headers={"Content-Type": "application/json"})
@@ -111,7 +112,7 @@ def main():
                     raise ValueError("slow latest viewer did not exercise skips")
                 with (output / "volume-settings.jsonl").open() as settings_log:
                     records = [json.loads(line) for line in settings_log]
-                if len(records) != scans or {record["options"]["algorithm"] for record in records} != set(ALGORITHMS):
+                if len(records) != scans or {record["options"]["algorithm"] for record in records} != set(available_algorithms()):
                     raise ValueError("volume settings log did not record every scan and live algorithm")
                 for device in initial_devices.values():
                     try:

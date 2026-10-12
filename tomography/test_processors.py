@@ -16,6 +16,7 @@ class DetectorProcessorTests(unittest.TestCase):
             ptr = 1
             def __enter__(self): return self
             def __exit__(self, *_): pass
+            def synchronize(self): pass
 
         class Codec:
             def __init__(self, **options):
@@ -29,6 +30,8 @@ class DetectorProcessorTests(unittest.TestCase):
                 return config
 
             def decode(self, compressed, *, out, decompression_config):
+                # Like nvCOMP: pinned scratch for the call, dropped while its copies are queued.
+                nvcomp.allocator(64, None)
                 if isinstance(compressed, list):
                     for source, destination, size in zip(compressed, out, decompression_config):
                         self.decode(source, out=destination, decompression_config=size)
@@ -50,6 +53,21 @@ class DetectorProcessorTests(unittest.TestCase):
                 np.copyto(output, -np.log(np.clip(transmission, 1e-6, 1)))
             return correct
 
+        class Pinned:
+            def __init__(self):
+                self.ptr = 4096
+                test.pinned_live += 1
+
+            def __del__(self):
+                test.pinned_live -= 1
+
+        class Event:
+            def record(self, stream):
+                test.events.append(self)
+                self.done = test.stream_idle
+
+        test = self
+        self.pinned_live, self.events, self.stream_idle = 0, [], True
         self.kernel_input_types = []
         self.raw_calls, self.raw_buffers = [], {}
         def raw_kernel(source, name):
@@ -72,9 +90,12 @@ class DetectorProcessorTests(unittest.TestCase):
                                empty=np.empty, empty_like=np.empty_like, copyto=np.copyto,
                                ElementwiseKernel=kernel, RawKernel=raw_kernel,
                                cuda=SimpleNamespace(Device=lambda gpu: SimpleNamespace(use=lambda: None),
-                                                    ExternalStream=lambda pointer: Stream()))
+                                                    ExternalStream=lambda pointer: Stream(), Event=Event,
+                                                    PinnedMemoryPool=lambda: SimpleNamespace(
+                                                        malloc=lambda nbytes: Pinned())))
         nvcomp = SimpleNamespace(Codec=Codec, BitstreamKind=SimpleNamespace(RAW="raw"),
-                                 as_array=lambda array, **options: array)
+                                 as_array=lambda array, **options: array,
+                                 set_pinned_allocator=lambda allocator: setattr(nvcomp, "allocator", allocator))
         spec = importlib.util.spec_from_file_location("detector_processor_test", Path(__file__).with_name("processors.py"))
         module = importlib.util.module_from_spec(spec)
         with patch.dict("sys.modules", {"cupy": cupy, "nvidia": SimpleNamespace(nvcomp=nvcomp)}):
@@ -149,10 +170,31 @@ class DetectorProcessorTests(unittest.TestCase):
             processor.consume_many(frames[4:])
             processor.finish()
         self.assertEqual(processor.received, 6)
-        self.assertEqual(processor.compressed_batch.shape, (16, 256))
+        self.assertEqual(processor.compressed_batch.shape, (4, 256))
         self.assertEqual(set(processor.batch_decoding), {2, 4})
         for index, raw in enumerate(expected):
             np.testing.assert_array_equal(pointers[index + 101].view(np.uint16).reshape(raw.shape), raw)
+
+    def test_decoder_scratch_returns_to_the_pool_only_after_its_queued_copies(self):
+        module = self.load_processor()
+        scan = dict(rows=2, columns=3, angles=4, theta=[0., .1, .2, .3],
+                    max_compressed_bytes=32, element="u16")
+        processor = module.Processor("decompress", scan, 0, 1, 1)
+        raw = np.full((2, 3), 7, np.uint16)
+        compressed = np.frombuffer(lz4.block.compress(raw.tobytes(), store_size=False), np.uint8)
+        pointers = {1: compressed, 2: np.empty(raw.nbytes, np.uint8)}
+        with patch.object(module, "array_at", side_effect=lambda p, shape, dtype, gpu: pointers[p]):
+            self.stream_idle = False
+            for kind in (0, 1):
+                processor.consume(1, compressed.nbytes, 2, kind, 0, 0.)
+            # nvCOMP has dropped both buffers, but the stream has not reached either call.
+            self.assertEqual(self.pinned_live, 2)
+            for event in self.events:
+                event.done = True
+            self.stream_idle = True
+            processor.consume(1, compressed.nbytes, 2, 2, 0, 0.)
+        self.assertEqual(self.pinned_live, 0)
+        self.assertEqual(processor.queued, [])
 
     def test_invalid_batch_is_rejected_before_reads_or_counter_changes(self):
         module = self.load_processor()
@@ -167,7 +209,7 @@ class DetectorProcessorTests(unittest.TestCase):
                 borrowed.assert_not_called()
                 self.assertEqual(processor.received, 0)
         with self.assertRaisesRegex(ValueError, "capacity"):
-            processor.consume_many([valid] * 17)
+            processor.consume_many([valid] * (module.MAX_BATCH + 1))
 
     def test_correction_batches_calibration_and_projections_into_independent_slots(self):
         for element, dtype in (("u16", np.uint16), ("f32", np.float32)):
@@ -240,34 +282,35 @@ class BatchGpuTests(unittest.TestCase):
         import cupy as cp
         from processors import Processor
         stream = cp.cuda.Stream(non_blocking=True)
-        scan = dict(rows=3, columns=5, angles=5, theta=[0., .1, .2, .3, .4])
-        for element, dtype in (("u16", cp.uint16), ("f32", cp.float32)):
-            with self.subTest(element=element), stream:
-                correction = Processor("correct", dict(scan, element=element), 0, stream.ptr, 1)
-                reconstruction = Processor("reconstruct", scan, 0, stream.ptr, 1)
-                spatial = cp.arange(15, dtype=cp.float32).reshape(3, 5) % 4
-                inputs = [(value + spatial * (1 if i == 0 else 2 if i == 1 else 3)).astype(dtype)
-                          for i, value in enumerate((10, 100, 20, 30, 40, 50, 60))]
-                outputs = [cp.empty((3, 5), cp.float32) for _ in range(5)]
-                frames = [(raw.data.ptr, raw.nbytes, outputs[i - 2].data.ptr if i >= 2 else 0,
-                           min(i, 2), max(0, i - 2), scan["theta"][max(0, i - 2)])
-                          for i, raw in enumerate(inputs)]
-                correction.consume_many(frames[:4])
-                correction.consume_many(frames[4:])
-                correction.finish()
-                received = [(output.data.ptr, output.nbytes, 0, 2, i, scan["theta"][i])
-                            for i, output in enumerate(outputs)]
-                # Inspect the retained sinogram before a backend call, independently of ASTRA.
-                reconstruction.buffer_plan["output_mode"] = "blocks"
-                reconstruction.consume_many(received[:3])
-                reconstruction.consume_many(received[3:])
-                reconstruction.finish()
-                stream.synchronize()
-                for i, output in enumerate(outputs):
-                    dark, flat, raw = (inputs[j].get().astype(np.float32) for j in (0, 1, i + 2))
-                    expected = -np.log(np.clip((raw - dark) / (flat - dark), 1e-6, 1))
-                    np.testing.assert_allclose(output.get(), expected, rtol=2e-6)
-                    np.testing.assert_allclose(reconstruction.sinogram[:, i].get(), expected, rtol=2e-6)
+        for angles in (5, 35):
+            scan = dict(rows=3, columns=5, angles=angles, theta=np.arange(angles).tolist())
+            for element, dtype in (("u16", cp.uint16), ("f32", cp.float32)):
+                with self.subTest(element=element, angles=angles), stream:
+                    correction = Processor("correct", dict(scan, element=element), 0, stream.ptr, 1)
+                    reconstruction = Processor("reconstruct", scan, 0, stream.ptr, 1)
+                    spatial = cp.arange(15, dtype=cp.float32).reshape(3, 5) % 4
+                    inputs = [(value + spatial * (1 if i == 0 else 2 if i == 1 else 3)).astype(dtype)
+                              for i, value in enumerate((10, 100, *range(20, 20 + angles)))]
+                    outputs = [cp.empty((3, 5), cp.float32) for _ in range(angles)]
+                    frames = [(raw.data.ptr, raw.nbytes, outputs[i - 2].data.ptr if i >= 2 else 0,
+                               min(i, 2), max(0, i - 2), scan["theta"][max(0, i - 2)])
+                              for i, raw in enumerate(inputs)]
+                    correction.consume_many(frames[:4])
+                    correction.consume_many(frames[4:])
+                    correction.finish()
+                    received = [(output.data.ptr, output.nbytes, 0, 2, i, scan["theta"][i])
+                                for i, output in enumerate(outputs)]
+                    # Inspect the retained sinogram before a backend call, independently of ASTRA.
+                    reconstruction.buffer_plan["output_mode"] = "blocks"
+                    reconstruction.consume_many(received[:3])
+                    reconstruction.consume_many(received[3:])
+                    reconstruction.finish()
+                    stream.synchronize()
+                    for i, output in enumerate(outputs):
+                        dark, flat, raw = (inputs[j].get().astype(np.float32) for j in (0, 1, i + 2))
+                        expected = -np.log(np.clip((raw - dark) / (flat - dark), 1e-6, 1))
+                        np.testing.assert_allclose(output.get(), expected, rtol=2e-6)
+                        np.testing.assert_allclose(reconstruction.sinogram[:, i].get(), expected, rtol=2e-6)
 
 
 if __name__ == "__main__":

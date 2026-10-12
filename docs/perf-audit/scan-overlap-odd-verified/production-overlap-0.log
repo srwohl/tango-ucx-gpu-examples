@@ -1,0 +1,256 @@
+{"workload": {"detector_shape": [8, 64], "volume_shape": [8, 64, 64], "projections_per_volume": 97, "input_frames_per_volume": 99, "detector_element": "u16", "detector_frame_bytes": 1024, "corrected_frame_bytes": 2048, "detector_bytes_per_volume": 101376, "compressed_bytes_per_volume": 65641, "volume_bytes": 131072, "reconstruction": {"algorithm": "fbp", "backend": "astra-cuda", "filter": "ram-lak", "iterations": null, "threads": null, "relaxation": null, "min_constraint": null, "max_constraint": null, "filter_cutoff": null, "center": null, "gaussian_fwhm": 0.0, "scale_factor": 1.0, "slices_per_block": 0}, "iterations": null, "buffering": {"sinogram_memory": "gpu", "host_budget_bytes": 1073741824, "pinned_budget_bytes": 134217728, "memory_plan": {"sinogram_memory": "gpu", "block_rows": 8, "transfer_slots": 2, "retained_host_bytes": 0, "pinned_staging_bytes": 0, "gpu_sinogram_bytes": 198656, "gpu_block_input_bytes": 0, "output_mode": "volume", "output_block_rows": 8, "host_output_bytes": 0, "gpu_output_bytes": 131072, "gpu_output_ring_budget_bytes": 1245184}}, "scan_period_seconds": 0.0, "reconstructors": 1, "chains": 1, "receive_budget_bytes": 870400, "source": {"type": "phantom"}, "stage_gpus": {"decompress": 0, "correct": 0, "reconstruct": 0}, "network": {"profile": "auto", "tls": "all", "net_devices": "all", "allow_gpu_over_tcp": true}, "processing": {"transport_batch": 16, "processing_batch": 16, "processing_mode": "batched"}, "display_max": 0.01}}
+{"completed_scan": 1, "shape": [8, 64, 64]}
+{"completed_scan": 2, "shape": [8, 64, 64]}
+{"completed_scan": 3, "shape": [8, 64, 64]}
+{
+  "device_servers": 4,
+  "completed_scans": 3,
+  "archived_frames": 297,
+  "live_view": null,
+  "stopped": false,
+  "volumes_verified": true,
+  "reconstruction_shape": [
+    8,
+    64,
+    64
+  ],
+  "relative_l2_error": 0.3114398121833801,
+  "max_phantom_error": 0.65,
+  "reconstruction_settings": {
+    "options": {
+      "algorithm": "fbp",
+      "backend": "astra-cuda",
+      "center": null,
+      "filter": "ram-lak",
+      "filter_cutoff": null,
+      "gaussian_fwhm": 0.0,
+      "iterations": null,
+      "max_constraint": null,
+      "min_constraint": null,
+      "relaxation": null,
+      "scale_factor": 1.0,
+      "slices_per_block": 0,
+      "threads": null
+    },
+    "revision": 0,
+    "scan_id": 3
+  },
+  "elapsed_seconds": 0.8293490079995536,
+  "pressure_observed": [
+    "correct",
+    "decompress",
+    "reconstruct",
+    "source"
+  ],
+  "workload": {
+    "detector_shape": [
+      8,
+      64
+    ],
+    "volume_shape": [
+      8,
+      64,
+      64
+    ],
+    "projections_per_volume": 97,
+    "input_frames_per_volume": 99,
+    "detector_element": "u16",
+    "detector_frame_bytes": 1024,
+    "corrected_frame_bytes": 2048,
+    "detector_bytes_per_volume": 101376,
+    "compressed_bytes_per_volume": 65641,
+    "volume_bytes": 131072,
+    "reconstruction": {
+      "algorithm": "fbp",
+      "backend": "astra-cuda",
+      "center": null,
+      "filter": "ram-lak",
+      "filter_cutoff": null,
+      "gaussian_fwhm": 0.0,
+      "iterations": null,
+      "max_constraint": null,
+      "min_constraint": null,
+      "relaxation": null,
+      "scale_factor": 1.0,
+      "slices_per_block": 0,
+      "threads": null
+    },
+    "iterations": null,
+    "buffering": {
+      "sinogram_memory": "gpu",
+      "host_budget_bytes": 1073741824,
+      "pinned_budget_bytes": 134217728,
+      "memory_plan": {
+        "sinogram_memory": "gpu",
+        "block_rows": 8,
+        "transfer_slots": 2,
+        "retained_host_bytes": 0,
+        "pinned_staging_bytes": 0,
+        "gpu_sinogram_bytes": 198656,
+        "gpu_block_input_bytes": 0,
+        "output_mode": "volume",
+        "output_block_rows": 8,
+        "host_output_bytes": 0,
+        "gpu_output_bytes": 131072,
+        "gpu_output_ring_budget_bytes": 1245184
+      }
+    },
+    "scan_period_seconds": 0.0,
+    "reconstructors": 1,
+    "chains": 1,
+    "receive_budget_bytes": 870400,
+    "source": {
+      "type": "phantom"
+    },
+    "stage_gpus": {
+      "decompress": 0,
+      "correct": 0,
+      "reconstruct": 0
+    },
+    "network": {
+      "profile": "auto",
+      "tls": "all",
+      "net_devices": "all",
+      "allow_gpu_over_tcp": true
+    },
+    "processing": {
+      "transport_batch": 16,
+      "processing_batch": 16,
+      "processing_mode": "batched"
+    },
+    "display_max": 0.01
+  },
+  "throughput": {
+    "mean_since_start": true,
+    "stages": {
+      "source": {
+        "frames_per_second": 358.1122026255078,
+        "payload_mib_per_second": 0.22644315673886845
+      },
+      "decompress": {
+        "frames_per_second": 358.1122026255078,
+        "payload_mib_per_second": 0.34971894787647245
+      },
+      "correct": {
+        "frames_per_second": 350.8776126734773,
+        "payload_mib_per_second": 0.6853078372528854
+      },
+      "reconstruct": {
+        "frames_per_second": 3.61729497601523,
+        "payload_mib_per_second": 0.4521618720019038
+      }
+    },
+    "volumes_per_second": 3.61729497601523
+  },
+  "volume_transport": "sysv/memory,cuda_ipc/cuda",
+  "stages": {
+    "source": {
+      "completed_scans": 3,
+      "failure": "",
+      "input_failure": "",
+      "input_transport": "",
+      "payload_bytes": 751,
+      "pressure": true,
+      "processed": 297,
+      "processing_batch": 16,
+      "processing_mode": "batched",
+      "published": 297,
+      "publisher_budget_bytes": 870400,
+      "publisher_payload_storage_upper_bytes": 769024,
+      "publisher_slots_free": 404,
+      "publisher_slots_held": 0,
+      "quarantined_bytes": 0,
+      "reconstruct_ns": 0,
+      "role": "source",
+      "slot_wait_ns": 455485843,
+      "transport_batch": 16
+    },
+    "decompress": {
+      "completed_scans": 3,
+      "failure": "",
+      "input_failure": "",
+      "input_transport": "sysv/memory,cuda_ipc/cuda",
+      "payload_bytes": 1024,
+      "pressure": true,
+      "processed": 297,
+      "processing_batch": 16,
+      "processing_mode": "batched",
+      "published": 297,
+      "publisher_budget_bytes": 870400,
+      "publisher_payload_storage_upper_bytes": 870400,
+      "publisher_slots_free": 451,
+      "publisher_slots_held": 0,
+      "quarantined_bytes": 0,
+      "reconstruct_ns": 0,
+      "role": "decompress",
+      "slot_wait_ns": 72511,
+      "transport_batch": 16
+    },
+    "correct": {
+      "completed_scans": 3,
+      "failure": "",
+      "input_failure": "",
+      "input_transport": "sysv/memory,cuda_ipc/cuda",
+      "payload_bytes": 2048,
+      "pressure": true,
+      "processed": 297,
+      "processing_batch": 16,
+      "processing_mode": "batched",
+      "published": 291,
+      "publisher_budget_bytes": 870400,
+      "publisher_payload_storage_upper_bytes": 870400,
+      "publisher_slots_free": 271,
+      "publisher_slots_held": 0,
+      "quarantined_bytes": 0,
+      "reconstruct_ns": 0,
+      "role": "correct",
+      "slot_wait_ns": 7867417,
+      "transport_batch": 16
+    },
+    "reconstruct": {
+      "completed_scans": 3,
+      "failure": "",
+      "input_failure": "",
+      "input_transport": "sysv/memory,cuda_ipc/cuda",
+      "payload_bytes": 131072,
+      "pressure": true,
+      "processed": 291,
+      "processing_batch": 16,
+      "processing_mode": "batched",
+      "published": 3,
+      "publisher_budget_bytes": 1245184,
+      "publisher_payload_storage_upper_bytes": 1179648,
+      "publisher_slots_free": 8,
+      "publisher_slots_held": 0,
+      "quarantined_bytes": 0,
+      "reconstruct_ns": 227996732,
+      "role": "reconstruct",
+      "slot_wait_ns": 3518,
+      "transport_batch": 16,
+      "reconstructors": [
+        {
+          "completed_scans": 3,
+          "failure": "",
+          "input_failure": "",
+          "input_transport": "sysv/memory,cuda_ipc/cuda",
+          "payload_bytes": 131072,
+          "pressure": true,
+          "processed": 291,
+          "processing_batch": 16,
+          "processing_mode": "batched",
+          "published": 3,
+          "publisher_budget_bytes": 1245184,
+          "publisher_payload_storage_upper_bytes": 1179648,
+          "publisher_slots_free": 8,
+          "publisher_slots_held": 0,
+          "quarantined_bytes": 0,
+          "reconstruct_ns": 227996732,
+          "role": "reconstruct",
+          "slot_wait_ns": 3518,
+          "transport_batch": 16
+        }
+      ]
+    }
+  },
+  "output": "/home/swohl/repo/tango-hpc/perf-audit/scan-overlap-odd-verified/production-overlap-0"
+}

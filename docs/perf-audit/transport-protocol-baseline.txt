@@ -1,0 +1,139 @@
+[1791401752.999339] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +-------+-------------+---------------------------+
+[1791401752.999339] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | ucp_context_0 self cfg#0                        |
+[1791401752.999339] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | active message by ucp_am_send* from host memory |
+[1791401752.999339] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +-------+-------------+---------------------------+
+[1791401752.999339] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | Range | Description |          Config           |
+[1791401752.999339] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +-------+-------------+---------------------------+
+[1791401752.999358] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +-------+-------------+-------------------------------------------+
+[1791401752.999358] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | ucp_context_0 self cfg#0                                        |
+[1791401752.999358] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | active message by ucp_am_send* with reply flag from host memory |
+[1791401752.999358] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +-------+-------------+-------------------------------------------+
+[1791401752.999358] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | Range | Description |                  Config                   |
+[1791401752.999358] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +-------+-------------+-------------------------------------------+
+[1791401753.811365] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.811365] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | ucp_context_0 intra-node cfg#1                                          |
+[1791401753.811365] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | active message by ucp_am_send* from host memory                         |
+[1791401753.811365] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.811365] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |    Range     |                Description                 |   Config    |
+[1791401753.811365] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.811365] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |        0..92 | short                                      | sysv/memory |
+[1791401753.811365] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |     93..8248 | copy-in                                    | sysv/memory |
+[1791401753.811365] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | 8249..579763 | multi-frag copy-in                         | sysv/memory |
+[1791401753.811365] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |  579764..inf | (?) rendezvous fragmented copy-in copy-out | sysv/memory |
+[1791401753.811365] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.811617] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.811617] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | ucp_context_0 intra-node cfg#1                                          |
+[1791401753.811617] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | active message by ucp_am_send*(fast-completion) from host memory        |
+[1791401753.811617] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.811617] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |    Range     |                Description                 |   Config    |
+[1791401753.811617] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.811617] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |        0..92 | short                                      | sysv/memory |
+[1791401753.811617] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |     93..8248 | copy-in                                    | sysv/memory |
+[1791401753.811617] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | 8249..262143 | multi-frag copy-in                         | sysv/memory |
+[1791401753.811617] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |    256K..inf | (?) rendezvous fragmented copy-in copy-out | sysv/memory |
+[1791401753.811617] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.812211] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.812211] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | ucp_context_0 intra-node cfg#1                                          |
+[1791401753.812211] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | active message by ucp_am_send*(multi) from host memory                  |
+[1791401753.812211] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.812211] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |    Range     |                Description                 |   Config    |
+[1791401753.812211] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.812211] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |        0..92 | short                                      | sysv/memory |
+[1791401753.812211] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |     93..8248 | copy-in                                    | sysv/memory |
+[1791401753.812211] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | 8249..239433 | multi-frag copy-in                         | sysv/memory |
+[1791401753.812211] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |  239434..inf | (?) rendezvous fragmented copy-in copy-out | sysv/memory |
+[1791401753.812211] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.812415] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.812415] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | ucp_context_0 intra-node cfg#1                                          |
+[1791401753.812415] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | active message by ucp_am_send* with reply flag from host memory         |
+[1791401753.812415] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.812415] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |    Range     |                Description                 |   Config    |
+[1791401753.812415] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.812415] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |        0..84 | short                                      | sysv/memory |
+[1791401753.812415] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |     85..8240 | copy-in                                    | sysv/memory |
+[1791401753.812415] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | 8241..579763 | multi-frag copy-in                         | sysv/memory |
+[1791401753.812415] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |  579764..inf | (?) rendezvous fragmented copy-in copy-out | sysv/memory |
+[1791401753.812415] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.812612] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+----------------------+
+[1791401753.812612] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | ucp_context_0 intra-node cfg#1                                                   |
+[1791401753.812612] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | active message by ucp_am_send* with reply flag(fast-completion) from host memory |
+[1791401753.812612] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+----------------------+
+[1791401753.812612] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |    Range     |                Description                 |      [1791401753.805935] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +-------+-------------+---------------------------+
+[1791401753.805935] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | ucp_context_0 self cfg#0                        |
+[1791401753.805935] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | active message by ucp_am_send* from host memory |
+[1791401753.805935] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +-------+-------------+---------------------------+
+[1791401753.805935] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | Range | Description |          Config           |
+[1791401753.805935] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +-------+-------------+---------------------------+
+[1791401753.805955] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +-------+-------------+-------------------------------------------+
+[1791401753.805955] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | ucp_context_0 self cfg#0                                        |
+[1791401753.805955] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | active message by ucp_am_send* with reply flag from host memory |
+[1791401753.805955] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +-------+-------------+-------------------------------------------+
+[1791401753.805955] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | Range | Description |                  Config                   |
+[1791401753.805955] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +-------+-------------+-------------------------------------------+
+[1791401753.813455] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813455] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | ucp_context_0 intra-node cfg#1                                          |
+[1791401753.813455] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | active message by ucp_am_send* from host memory                         |
+[1791401753.813455] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813455] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |    Range     |                Description                 |   Config    |
+[1791401753.813455] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813455] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |        0..92 | short                                      | sysv/memory |
+[1791401753.813455] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |     93..8248 | copy-in                                    | sysv/memory |
+[1791401753.813455] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | 8249..579763 | multi-frag copy-in                         | sysv/memory |
+[1791401753.813455] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |  579764..inf | (?) rendezvous fragmented copy-in copy-out | sysv/memory |
+[1791401753.813455] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813542] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813542] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | ucp_context_0 intra-node cfg#1                                          |
+[1791401753.813542] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | active message by ucp_am_send*(fast-completion) from host memory        |
+[1791401753.813542] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813542] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |    Range     |                Description                 |   Config    |
+[1791401753.813542] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813542] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |        0..92 | short                                      | sysv/memory |
+[1791401753.813542] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |     93..8248 | copy-in                                    | sysv/memory |
+[1791401753.813542] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | 8249..262143 | multi-frag copy-in                         | sysv/memory |
+[1791401753.813542] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |    256K..inf | (?) rendezvous fragmented copy-in copy-out | sysv/memory |
+[1791401753.813542] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813803] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813803] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | ucp_context_0 intra-node cfg#1                                          |
+[1791401753.813803] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | active message by ucp_am_send*(multi) from host memory                  |
+[1791401753.813803] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813803] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |    Range     |                Description                 |   Config    |
+[1791401753.813803] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813803] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |        0..92 | short                                      | sysv/memory |
+[1791401753.813803] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |     93..8248 | copy-in                                    | sysv/memory |
+[1791401753.813803] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | 8249..239433 | multi-frag copy-in                         | sysv/memory |
+[1791401753.813803] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |  239434..inf | (?) rendezvous fragmented copy-in copy-out | sysv/memory |
+[1791401753.813803] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813891] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813891] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | ucp_context_0 intra-node cfg#1                                          |
+[1791401753.813891] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | active message by ucp_am_send* with reply flag from host memory         |
+[1791401753.813891] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813891] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |    Range     |                Description                 |   Config    |
+[1791401753.813891] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813891] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |        0..84 | short                                      | sysv/memory |
+[1791401753.813891] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |     85..8240 | copy-in                                    | sysv/memory |
+[1791401753.813891] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | 8241..579763 | multi-frag copy-in                         | sysv/memory |
+[1791401753.813891] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |  579764..inf | (?) rendezvous fragmented copy-in copy-out | sysv/memory |
+[1791401753.813891] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.813970] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+----------------------+
+[1791401753.813970] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | ucp_context_0 intra-node cfg#1                                                   |
+[1791401753.813970] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   | active message by ucp_am_send* with reply flag(fast-completion) from host memory |
+[1791401753.813970] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   +--------------+--------------------------------------------+----------------------+
+[1791401753.813970] [swohl-B450-I-AORUS-PRO-WIFI:101324:0]   |    Range     |                Description                 |        Config        |
+[1791401753.812612] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+----------------------+
+[1791401753.812612] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |        0..84 | short                                      | sysv/memory          |
+[1791401753.812612] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |     85..8240 | copy-in                                    | sysv/memory          |
+[1791401753.812612] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | 8241..262143 | multi-frag copy-in                         | sysv/memory          |
+[1791401753.812612] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |    256K..inf | (?) rendezvous fragmented copy-in copy-out | sysv/memory          |
+[1791401753.812612] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+----------------------+
+[1791401753.812913] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.812913] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | ucp_context_0 intra-node cfg#1                                          |
+[1791401753.812913] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | active message by ucp_am_send* with reply flag(multi) from host memory  |
+[1791401753.812913] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.812913] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |    Range     |                Description                 |   Config    |
+[1791401753.812913] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+[1791401753.812913] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |        0..84 | short                                      | sysv/memory |
+[1791401753.812913] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |     85..8240 | copy-in                                    | sysv/memory |
+[1791401753.812913] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   | 8241..239433 | multi-frag copy-in                         | sysv/memory |
+[1791401753.812913] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   |  239434..inf | (?) rendezvous fragmented copy-in copy-out | sysv/memory |
+[1791401753.812913] [swohl-B450-I-AORUS-PRO-WIFI:101314:0]   +--------------+--------------------------------------------+-------------+
+{"acquire_ns":31538937,"batch":16,"field_bytes":40,"frames":5000,"max_payload_bytes":75000,"max_wait_us":10000,"ns_per_frame":32984.3148,"open_handle_ns":3911692,"publisher_create_ns":805982436,"receiver":{"batches":320,"failure":"","native_ready_ns":1075543,"outcome":1,"payload_bytes":375000000,"prepare_ns":808647105,"receive_ns":164669064,"received":5000,"transport":"sysv/memory,cuda_ipc/cuda","ucx_calls":{"credit":{"calls":320,"host_ns":0},"end":{"calls":0,"host_ns":0},"frame":{"calls":0,"host_ns":0},"ready":{"calls":0,"host_ns":0}},"valid":true},"time_ucx_calls":false,"transfer_ns":164921574,"ucx_calls":{"credit":{"calls":0,"host_ns":0},"end":{"calls":1,"host_ns":0},"frame":{"calls":5000,"host_ns":0},"ready":{"calls":1,"host_ns":0}},"validate_all":false,"varying_lengths":false}

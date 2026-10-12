@@ -11,7 +11,7 @@ CHOICES = {
     "network": ("tcp", "auto", "rdma"),
     "processing_mode": ("scalar", "batched"),
     "sinogram_memory": ("gpu", "host"),
-    "output_mode": ("volume", "blocks"),
+    "output_mode": ("volume", "blocks", "slices"),
 }
 PROCESSING_ROLES = ("decompress", "correct", "reconstruct")
 STAGE_BATCH_KEYS = {f"{role}_batch" for role in PROCESSING_ROLES}
@@ -22,8 +22,44 @@ GPU_KEYS = {"gpu", "decompress_gpu", "correct_gpu", "reconstruct_gpu"}
 MEMORY_KEYS = {"host_buffer_mib", "pinned_buffer_mib", "output_host_mib"}
 FLOAT_KEYS = {"receive_budget_mib", "scan_period"}
 GEOMETRY_KEYS = {"pixels", "slices", "angles"}
-BOOL_KEYS = {"verify", "save", "decompress"}
-OPTION_KEYS = set(CHOICES) | BATCH_KEYS | GPU_KEYS | MEMORY_KEYS | FLOAT_KEYS | GEOMETRY_KEYS | BOOL_KEYS | {"net_devices"}
+BOOLEAN_KEYS = {"saving", "decompression", "verify_volumes"}
+OPTION_ALIASES = {"save": "saving", "decompress": "decompression", "verify": "verify_volumes"}
+OPTION_KEYS = (set(CHOICES) | BATCH_KEYS | GPU_KEYS | MEMORY_KEYS | FLOAT_KEYS | GEOMETRY_KEYS |
+               BOOLEAN_KEYS | {"net_devices", "reconstructors", "update_projections"})
+# tango-ucx grants at most 1024 publisher slots; a larger budget buffers no further frames.
+MAX_BUFFERED_FRAMES = 1024
+# Each link's receive and publish sides use the budget, mostly on GPU: bound large detectors.
+AUTO_LINK_BYTES = 512 * 1024**2
+# tango-ucx bounds a GPU receive ring at 4096 frames, and a puller's ring holds its whole range.
+MAX_GPU_RING_FRAMES = 4096
+# Each reconstructor is a process with its own CUDA context, sinogram and output slots.
+MAX_RECONSTRUCTORS = 8
+# Batched decompression holds a publisher slot per frame and keeps as many again free, within
+# tango-ucx's 1024 slots. pipeline_device.cpp checks the same bound.
+MAX_BATCH = 512
+
+
+def link_budget(rows, columns, angles, transport_batch, detector_element="u16"):
+    """Return (bytes, frames) letting every link hold one scan while reconstruction runs.
+
+    Reconstruction stops receiving during a volume; upstream stages continue only into free
+    downstream ring entries. Large frames are limited to AUTO_LINK_BYTES, never below two
+    receive batches. The per-frame margin covers publisher records and two sessions' operations.
+    """
+    corrected = rows * columns * 4
+    detector = rows * columns * (4 if detector_element == "f32" else 2)
+    compressed_bound = detector + (detector + 254) // 255 + 16
+    per_frame = corrected + 4096
+    frames = max(2 * transport_batch, min(angles + 2, MAX_BUFFERED_FRAMES, AUTO_LINK_BYTES // per_frame))
+    return (256 << 10) + max(frames * per_frame, 4 * compressed_bound), frames
+
+
+def scan_ring_budget(rows, columns, angles, transport_batch):
+    """Receive bytes for a puller to take one scan at a turn; None if no GPU ring can hold it."""
+    if angles > MAX_GPU_RING_FRAMES:
+        return None
+    frames = min(angles + transport_batch, MAX_GPU_RING_FRAMES)
+    return (256 << 10) + frames * (rows * columns * 4 + 4096)
 
 
 class PipelineConflict(RuntimeError):
@@ -34,14 +70,20 @@ def validate_options(options, gpu_count=None):
     """Validate a partial or complete options object without supplying defaults."""
     if not isinstance(options, dict) or not options:
         raise ValueError("expected a nonempty pipeline options object")
+    options = dict(options)
+    for alias, key in OPTION_ALIASES.items():
+        if alias in options:
+            if key in options and options[key] != options[alias]:
+                raise ValueError(f"conflicting settings: {alias} and {key}")
+            options[key] = options.pop(alias)
     unknown = set(options) - OPTION_KEYS
     if unknown:
         raise ValueError(f"unknown pipeline settings: {', '.join(sorted(unknown))}")
     result = dict(options)
     for key, value in result.items():
         if key in STAGE_BATCH_KEYS | STAGE_MODE_KEYS and value is None:
-            continue  # Inherit the shared processing setting.
-        if key in BOOL_KEYS:
+            continue
+        if key in BOOLEAN_KEYS:
             if type(value) is not bool:
                 raise ValueError(f"{key} must be a boolean")
         elif key in CHOICES:
@@ -51,13 +93,14 @@ def validate_options(options, gpu_count=None):
             if value is not None and (not isinstance(value, str) or not value.strip() or
                                       any(ord(c) < 32 for c in value)):
                 raise ValueError("net_devices must be null or a nonempty device string")
-        elif key in BATCH_KEYS | GPU_KEYS | MEMORY_KEYS | GEOMETRY_KEYS:
+        elif key in BATCH_KEYS | GPU_KEYS | MEMORY_KEYS | GEOMETRY_KEYS | {"reconstructors", "update_projections"}:
             if type(value) is not int:
                 raise ValueError(f"{key} must be an integer")
-            minimum = 0 if key in GPU_KEYS else 1
-            maximum = 16 if key in BATCH_KEYS else None
+            # Zero projections per update publishes once per scan.
+            minimum = 0 if key in GPU_KEYS | {"update_projections"} else 1
+            maximum = MAX_BATCH if key in BATCH_KEYS else MAX_RECONSTRUCTORS if key == "reconstructors" else None
             if value < minimum or (maximum is not None and value > maximum):
-                raise ValueError(f"{key} must be {'1..16' if maximum else f'at least {minimum}'}")
+                raise ValueError(f"{key} must be {f'1..{maximum}' if maximum else f'at least {minimum}'}")
             if key in GPU_KEYS and gpu_count is not None and value >= gpu_count:
                 raise ValueError(f"{key} must be below the available GPU count ({gpu_count})")
         elif key in FLOAT_KEYS:
@@ -184,9 +227,15 @@ class PipelineControl:
             block_rows = min(recon.get("slices_per_block", 0) or rows, rows)
             pinned = 2 * (corrected + (block_rows * columns**2 * 4 if recon.get("algorithm") == "gridrec"
                                       else block_rows * angles * columns * 4))
-            compressed_bound = detector + (detector + 254) // 255 + 16
-            receive = (128 << 10) + max(2 * merged["transport_batch"] * (corrected + 2048),
-                                        4 * compressed_bound)
+            receive, buffered_frames = link_budget(rows, columns, angles, merged["transport_batch"], dtype)
+            if merged.get("reconstructors", 1) > 1:
+                # A puller takes a scan only when its ring has room for all of it.
+                scan_ring = scan_ring_budget(rows, columns, angles, merged["transport_batch"])
+                if scan_ring is None:
+                    raise ValueError(f"several reconstructors hold a scan in a GPU receive ring of at most "
+                                     f"{MAX_GPU_RING_FRAMES} frames")
+                if scan_ring > receive:
+                    receive, buffered_frames = scan_ring, angles + 2
             mib = lambda size: max(1, (size + 1024**2 - 1) // 1024**2)
             merged.update(receive_budget_mib=mib(receive), host_buffer_mib=mib(sinogram),
                           pinned_buffer_mib=mib(pinned), output_host_mib=mib(volume * 3))
@@ -194,5 +243,6 @@ class PipelineControl:
                                projections_per_volume=angles, detector_frame_bytes=detector,
                                corrected_frame_bytes=corrected, sinogram_bytes=sinogram,
                                volume_shape=[rows, columns, columns], volume_bytes=volume,
-                               pinned_staging_bytes=pinned)
+                               pinned_staging_bytes=pinned, buffered_frames=buffered_frames,
+                               scan_frames=angles + 2)
             return dict(options=merged, information=information)

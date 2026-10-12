@@ -1,0 +1,64 @@
+Breakpoint 1 at 0x4ab9c: file /home/swohl/repo/tango-hpc/tango-ucx/src/transport/subscription.cpp, line 102.
+
+This GDB supports auto-downloading debuginfo from the following URLs:
+  <https://debuginfod.ubuntu.com>
+Enable debuginfod for this session? (y or [n]) [answered N; input not from terminal]
+Debuginfod has been disabled.
+To make this setting permanent, add 'set debuginfod enabled off' to .gdbinit.
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+[Attaching after Thread 0x7ffff7cde2c0 (LWP 101108) fork to child process 101116]
+[New inferior 2 (process 101116)]
+[Detaching after fork from parent process 101108]
+[Inferior 1 (process 101108) detached]
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+[New Thread 0x7ffff75ff6c0 (LWP 101125)]
+[New Thread 0x7ffff5bff6c0 (LWP 101126)]
+[New Thread 0x7ffff516b6c0 (LWP 101127)]
+[Switching to Thread 0x7ffff75ff6c0 (LWP 101125)]
+INVALID_FRAME
+$1 = 88
+$2 = 9464
+$3 = false
+$4 = {session = 0, sequence = 0, payload_bytes = 0, index = 0, timestamp_ns = 0, record = {_M_elems = {0 <repeats 1024 times>}}, record_bytes = 40, packed = true, position = 0}
+$5 = 4676170724543545770
+$6 = 0
+$7 = 0
+$8 = 0
+$9 = 8931
+$10 = 29259076
+$11 = {frame_bytes = 75000, field_bytes = 40, padded_field_bytes = 40, record_stride = 56, header_bytes = 88, opaque = true}
+$12 = {<std::_Vector_base<unsigned long, std::allocator<unsigned long> >> = {_M_impl = {<std::allocator<unsigned long>> = {<std::__new_allocator<unsigned long>> = {<No data fields>}, <No data fields>}, <std::_Vector_base<unsigned long, std::allocator<unsigned long> >::_Vector_impl_data> = {_M_start = 0x7ffff0033840, _M_finish = 0x7ffff0033ca0, _M_end_of_storage = 0x7ffff0033ca0}, <No data fields>}}, <No data fields>}
+#0  TangoUcx::transport::(anonymous namespace)::on_frame (arg=0x555555655910, h=0x7fffdded1340, hn=88, data=0x7fffddecee48, n=9464, param=0x7ffff75fd970) at /home/swohl/repo/tango-hpc/tango-ucx/src/transport/subscription.cpp:102
+#1  0x00007ffff7eea49d in ucp_am_invoke_cb (worker=<optimized out>, am_id=<optimized out>, user_hdr=<optimized out>, user_hdr_length=<optimized out>, data=<optimized out>, data_length=<optimized out>, reply_ep=<optimized out>, recv_flags=<optimized out>) at core/ucp_am.c:1263
+#2  ucp_am_handler_common (worker=<optimized out>, am_hdr=<optimized out>, total_length=<optimized out>, reply_ep=0x0, am_flags=<optimized out>, recv_flags=<optimized out>, name=<synthetic pointer>) at core/ucp_am.c:1338
+#3  ucp_am_handler (am_arg=<optimized out>, am_data=<optimized out>, am_length=<optimized out>, am_flags=<optimized out>) at core/ucp_am.c:1392
+#4  0x00007ffff79dcd3c in uct_iface_invoke_am (iface=0x7ffff005ca00, id=<optimized out>, data=0x7fffddecee40, length=<optimized out>, flags=1) at /usr/local/src/conda/ucx-1.22.0/src/uct/base/uct_iface.h:970
+INVALID_FRAME
+$13 = 88
+$14 = 9464
+$15 = false
+$16 = {session = 72340172838076673, sequence = 72340172838076673, payload_bytes = 72340172838076673, index = 72340172838076673, timestamp_ns = 72340172838076673, record = {_M_elems = {1 <repeats 40 times>, 0 <repeats 984 times>}}, record_bytes = 40, packed = true, position = 72340172838076673}
+$17 = 4676170724543545770
+$18 = 0
+$19 = 0
+$20 = 0
+$21 = 8931
+$22 = 29259076
+$23 = {frame_bytes = 75000, field_bytes = 40, padded_field_bytes = 40, record_stride = 56, header_bytes = 88, opaque = true}
+$24 = {<std::_Vector_base<unsigned long, std::allocator<unsigned long> >> = {_M_impl = {<std::allocator<unsigned long>> = {<std::__new_allocator<unsigned long>> = {<No data fields>}, <No data fields>}, <std::_Vector_base<unsigned long, std::allocator<unsigned long> >::_Vector_impl_data> = {_M_start = 0x7ffff0033840, _M_finish = 0x7ffff0033ca0, _M_end_of_storage = 0x7ffff0033ca0}, <No data fields>}}, <No data fields>}
+#0  TangoUcx::transport::(anonymous namespace)::on_frame (arg=0x555555655910, h=0x7fffdde912c0, hn=88, data=0x7fffdde8edc8, n=9464, param=0x7ffff75fd970) at /home/swohl/repo/tango-hpc/tango-ucx/src/transport/subscription.cpp:102
+#1  0x00007ffff7eea49d in ucp_am_invoke_cb (worker=<optimized out>, am_id=<optimized out>, user_hdr=<optimized out>, user_hdr_length=<optimized out>, data=<optimized out>, data_length=<optimized out>, reply_ep=<optimized out>, recv_flags=<optimized out>) at core/ucp_am.c:1263
+#2  ucp_am_handler_common (worker=<optimized out>, am_hdr=<optimized out>, total_length=<optimized out>, reply_ep=0x0, am_flags=<optimized out>, recv_flags=<optimized out>, name=<synthetic pointer>) at core/ucp_am.c:1338
+#3  ucp_am_handler (am_arg=<optimized out>, am_data=<optimized out>, am_length=<optimized out>, am_flags=<optimized out>) at core/ucp_am.c:1392
+#4  0x00007ffff79dcd3c in uct_iface_invoke_am (iface=0x7ffff005ca00, id=<optimized out>, data=0x7fffdde8edc0, length=<optimized out>, flags=1) at /usr/local/src/conda/ucx-1.22.0/src/uct/base/uct_iface.h:970
+[Thread 0x7ffff516b6c0 (LWP 101127) exited]
+[Thread 0x7ffff75ff6c0 (LWP 101125) exited]
+[Thread 0x7ffff7cde2c0 (LWP 101116) exited]
+[Thread 0x7ffff5bff6c0 (LWP 101126) exited]
+[New process 101116]
+
+Program terminated with signal SIGKILL, Killed.
+The program no longer exists.
+{"acquire_ns":67162,"batch":1,"field_bytes":40,"frames":100,"max_payload_bytes":75000,"max_wait_us":10000,"ns_per_frame":932245.26,"open_handle_ns":3888698,"publisher_create_ns":806590385,"receiver":{"batches":0,"failure":"the publisher sent an invalid frame","native_ready_ns":1022753,"outcome":2,"payload_bytes":0,"prepare_ns":920700205,"receive_ns":72081697,"received":0,"transport":"sysv/memory,cuda_ipc/cuda","ucx_calls":{"credit":{"calls":0,"host_ns":0},"end":{"calls":0,"host_ns":0},"frame":{"calls":0,"host_ns":0},"ready":{"calls":0,"host_ns":0}},"valid":false},"time_ucx_calls":true,"transfer_ns":93224526,"ucx_calls":{"credit":{"calls":0,"host_ns":0},"end":{"calls":1,"host_ns":7173},"frame":{"calls":100,"host_ns":10545925},"ready":{"calls":1,"host_ns":72708}},"validate_all":false,"varying_lengths":false}

@@ -100,7 +100,8 @@ def main():
 
                 post(dict(network='tcp', transport_batch=4, processing_batch=4,
                           processing_mode='scalar', correct_mode='batched', correct_batch=2,
-                          reconstruct_mode='scalar', sinogram_memory='gpu', output_mode='volume'))
+                          reconstruct_mode='scalar', sinogram_memory='gpu', output_mode='volume',
+                          reconstructors=2))
                 second = wait_state(lambda s: (
                     s['pipeline_control']['run_id'] == 2 and
                     s['pipeline_control']['phase'] == 'running' and s['viewer']['received_volumes'] >= 3))
@@ -109,6 +110,11 @@ def main():
                 assert second['workload']['processing']['transport_batch'] == 4
                 assert second['workload']['processing']['stages']['correct'] == dict(batch=2, mode='batched')
                 assert second['workload']['processing']['stages']['reconstruct'] == dict(batch=4, mode='scalar')
+                # A pull set: two reconstruction devices share the scans and both keep live settings.
+                assert len(second['stages']['reconstruct']['reconstructors']) == 2
+                assert second['reconstruction_control']['active']['options']['scale_factor'] == 1.1
+                post(dict(algorithm='fbp', filter='hann', scale_factor=1.2), '/api/reconstruction')
+                wait_for(lambda: get()['viewer']['volumes'][-1]['reconstruction']['options']['scale_factor'] == 1.2)
                 post(dict(pixels=64, slices=4, angles=64, decompress=False, save=False, verify=False))
                 third = wait_state(lambda s: (
                     s['pipeline_control']['run_id'] == 3 and

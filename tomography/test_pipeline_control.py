@@ -5,8 +5,9 @@ import tempfile
 import threading
 import unittest
 
-from pipeline_control import (PROCESSING_ROLES, PipelineConflict, PipelineControl, atomic_json,
-                              stage_processing, validate_options)
+from pipeline_control import (PROCESSING_ROLES, AUTO_LINK_BYTES, MAX_BATCH, MAX_BUFFERED_FRAMES,
+                              MAX_GPU_RING_FRAMES, MAX_RECONSTRUCTORS, PipelineConflict, PipelineControl,
+                              atomic_json, link_budget, scan_ring_budget, stage_processing, validate_options)
 
 
 OPTIONS = dict(pixels=32, slices=16, angles=90, network="auto", net_devices=None, transport_batch=4, processing_batch=4,
@@ -24,11 +25,17 @@ def running_state():
 
 class ValidationTests(unittest.TestCase):
     def test_all_settings_and_partial_updates(self):
+        self.assertEqual(validate_options(dict(saving=False, decompression=True)),
+                         dict(saving=False, decompression=True))
+        for key in ("saving", "decompression"):
+            for value in (0, 1, "false", None):
+                with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                    validate_options({key: value})
         self.assertEqual(validate_options(OPTIONS, 2), OPTIONS)
         self.assertEqual(validate_options(dict(decompress_gpu=1, scan_period=0), 2),
                          dict(decompress_gpu=1, scan_period=0))
         self.assertEqual(validate_options(dict(verify=False, save=True, decompress=False)),
-                         dict(verify=False, save=True, decompress=False))
+                         dict(verify_volumes=False, saving=True, decompression=False))
 
     def test_stage_overrides_and_inheritance_are_validated_and_resolved(self):
         options = dict(OPTIONS, processing_mode="batched", processing_batch=16,
@@ -39,6 +46,14 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(stage_processing(options, "correct"), dict(batch=4, mode="scalar"))
         self.assertEqual(stage_processing(options, "reconstruct"), dict(batch=4, mode="batched"))
 
+    def test_slice_output_and_update_interval_are_launch_settings(self):
+        options = dict(output_mode="slices", update_projections=0)
+        self.assertEqual(validate_options(options), options)
+        self.assertEqual(validate_options(dict(update_projections=16)), dict(update_projections=16))
+        for value in (-1, 1.5, True, "16", None):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_options(dict(update_projections=value))
+
     def test_unknown_types_ranges_and_nonfinite_values(self):
         invalid = [None, [], {}, {"surprise": 1}, {"network": "ethernet"},
                    {"network": ["auto"]}, {"processing_mode": "parallel"},
@@ -47,9 +62,9 @@ class ValidationTests(unittest.TestCase):
         for key in ("verify", "save", "decompress"):
             invalid += [{key: value} for value in (1, 0, "false", None)]
         for key in ("transport_batch", "processing_batch"):
-            invalid += [{key: value} for value in (0, 17, 1.5, True)]
+            invalid += [{key: value} for value in (0, MAX_BATCH + 1, 1.5, True)]
         for role in PROCESSING_ROLES:
-            invalid += [{f"{role}_batch": value} for value in (0, 17, 1.5, True)]
+            invalid += [{f"{role}_batch": value} for value in (0, MAX_BATCH + 1, 1.5, True)]
             invalid += [{f"{role}_mode": value} for value in ("parallel", 1, True)]
         for key in ("gpu", "decompress_gpu", "correct_gpu", "reconstruct_gpu"):
             invalid += [{key: value} for value in (-1, 2, 0.0, True)]
@@ -166,8 +181,39 @@ class ControlTests(unittest.TestCase):
         self.assertGreaterEqual(result["options"]["host_buffer_mib"] * 1024**2, info["sinogram_bytes"])
         self.assertGreaterEqual(result["options"]["pinned_buffer_mib"] * 1024**2, info["pinned_staging_bytes"])
         self.assertGreaterEqual(result["options"]["output_host_mib"] * 1024**2, info["volume_bytes"] * 3)
+        self.assertEqual((info["buffered_frames"], info["scan_frames"]), (92, 92))
+        self.assertGreaterEqual(result["options"]["receive_budget_mib"] * 1024**2,
+                                92 * (info["corrected_frame_bytes"] + 4096))
         self.assertEqual(self.control.settings()["active"], self.state["active"])
         self.assertFalse(self.control.request_path.exists())
+
+    def test_link_budget_holds_a_scan_within_transport_and_memory_limits(self):
+        budget, frames = link_budget(128, 256, 720, 16)
+        self.assertEqual(frames, 722)
+        self.assertGreaterEqual(budget, 722 * 128 * 256 * 4)
+        self.assertEqual(link_budget(8, 64, 3000, 1)[1], MAX_BUFFERED_FRAMES)
+        budget, frames = link_budget(2048, 2048, 1800, 4)
+        self.assertEqual(frames, AUTO_LINK_BYTES // (2048 * 2048 * 4 + 4096))
+        self.assertLessEqual(budget, AUTO_LINK_BYTES + (256 << 10))
+        self.assertEqual(link_budget(4096, 4096, 1800, 16)[1], 32)
+
+    def test_several_reconstructors_size_the_receive_ring_for_a_whole_scan(self):
+        self.assertEqual(validate_options(dict(reconstructors=MAX_RECONSTRUCTORS))["reconstructors"], 8)
+        for value in (0, 9, 2.0, True):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "reconstructors"):
+                validate_options(dict(reconstructors=value))
+        self.assertIsNone(scan_ring_budget(8, 64, MAX_GPU_RING_FRAMES + 1, 1))
+        self.assertGreaterEqual(scan_ring_budget(128, 256, 720, 16), (720 + 16) * 128 * 256 * 4)
+        # A 2048-pixel scan exceeds the automatic per-link limit; a pull set still needs all of it.
+        options = dict(pixels=2048, slices=1024, angles=96, transport_batch=4, processing_batch=4)
+        one = self.control.recommend(options)
+        several = self.control.recommend(dict(options, reconstructors=2))
+        self.assertLess(one["information"]["buffered_frames"], 98)
+        self.assertEqual(several["information"]["buffered_frames"], 98)
+        self.assertGreaterEqual(several["options"]["receive_budget_mib"] * 1024**2,
+                                scan_ring_budget(1024, 2048, 96, 4))
+        with self.assertRaisesRegex(ValueError, "4096 frames"):
+            self.control.recommend(dict(options, angles=5000, reconstructors=2))
 
     def test_buffer_recommendation_keeps_hdf5_geometry(self):
         atomic_json(self.control.state_path, dict(self.state, fixed_geometry=True))

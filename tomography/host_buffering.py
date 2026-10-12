@@ -5,6 +5,8 @@ events protect every staging slot before the CPU or GPU reuses it.
 """
 import numpy as np
 
+from reconstruction import TOMOCUPY_ALGORITHMS, tomocupy_geometry
+
 
 TRANSFER_SLOTS = 2
 
@@ -23,8 +25,23 @@ def memory_plan(scan, reconstruction):
         raise ValueError("slices_per_block must be a nonnegative integer")
     block_rows = min(size or rows, rows)
     output_mode = config.get("output_mode", "volume")
-    if output_mode not in ("volume", "blocks"):
-        raise ValueError("output_mode must be volume or blocks")
+    if output_mode not in ("volume", "blocks", "slices"):
+        raise ValueError("output_mode must be volume, blocks or slices")
+    update = config.get("update_projections", 0)
+    if isinstance(update, bool) or not isinstance(update, int) or update < 0:
+        raise ValueError("update_projections must be a nonnegative integer (0 means once per scan)")
+    if update and angles % update:
+        raise ValueError("update_projections must divide the projections per volume")
+    if (update or output_mode == "slices") and mode != "gpu":
+        raise ValueError(f"{'slice output' if output_mode == 'slices' else 'update_projections'} needs "
+                         "sinogram_memory gpu: the ring of the latest rotation is kept on the GPU")
+    if update and output_mode == "blocks":
+        raise ValueError("block output publishes once per scan: set update_projections to 0, "
+                         "or choose volume or slices output")
+    if output_mode == "slices" and (reconstruction["algorithm"] != "fbp" or
+                                    reconstruction.get("gaussian_fwhm")):
+        raise ValueError("slice output uses FBP without Gaussian smoothing, which needs the volume")
+    tomocupy_geometry(reconstruction, columns, scan.get("theta"))
     output_rows = rows
     if output_mode == "blocks":
         output_rows = config.get("output_block_rows", block_rows)
@@ -42,7 +59,14 @@ def memory_plan(scan, reconstruction):
     frame_bytes = rows * columns * 4
     block_input_bytes = block_rows * angles * columns * 4
     block_output_bytes = block_rows * columns * columns * 4
+    side = max(rows, columns)
+    output_bytes = 3 * side * side * 4 if output_mode == "slices" else output_rows * columns * columns * 4
     cpu = reconstruction["algorithm"] == "gridrec"
+    backend_scratch = 0
+    if reconstruction["algorithm"] in TOMOCUPY_ALGORITHMS:
+        from tomocupy_backend import scratch_bytes
+        backend_scratch = scratch_bytes(reconstruction["algorithm"], block_rows, angles, columns,
+                                        reconstruction.get("dtype") or "float32")
     pinned_bytes = TRANSFER_SLOTS * (frame_bytes + (block_output_bytes if cpu else block_input_bytes))
     if mode == "host":
         for key, required in (("host_budget_bytes", sinogram_bytes),
@@ -59,10 +83,13 @@ def memory_plan(scan, reconstruction):
                 gpu_sinogram_bytes=0 if mode == "host" else sinogram_bytes,
                 gpu_block_input_bytes=TRANSFER_SLOTS * block_input_bytes if mode == "host" and not cpu else 0,
                 output_mode=output_mode, output_block_rows=output_rows,
+                update_projections=update, slice_size=side if output_mode == "slices" else 0,
                 host_output_bytes=rows * columns * columns * 4 if output_mode == "blocks" else 0,
-                gpu_output_bytes=output_rows * columns * columns * 4,
+                gpu_output_bytes=output_bytes,
+                # Filter scratch the TomocuPy backend owns; its plans and grids come on top.
+                gpu_backend_scratch_bytes=backend_scratch,
                 gpu_output_ring_budget_bytes=max(config.get("transport_budget_bytes", 256 << 10),
-                    output_rows * columns * columns * 4 * 8 + (192 << 10)))
+                    output_bytes * 8 + (192 << 10)))
 
 
 def pinned_empty(cp, shape):

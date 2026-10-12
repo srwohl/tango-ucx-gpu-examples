@@ -1,10 +1,15 @@
 """GPU processing and selectable reconstruction; C++ owns transport allocations."""
+import time
+
 import cupy as cp
 import numpy as np
 from nvidia import nvcomp
 
 from host_buffering import BlockTransfers, HostScanBuffer, memory_plan
-from reconstruction import SirtGPU, configuration, fbp_gpu, gridrec, postprocess, slice_blocks
+from pipeline_control import MAX_BATCH
+from reconstruction import (TOMOCUPY_ALGORITHMS, SirtGPU, configuration, fbp_gpu, gridrec, postprocess,
+                            slice_blocks)
+from streaming import SliceReconstructor, update_due, update_interval
 
 
 def array_at(pointer, shape, dtype, gpu):
@@ -43,6 +48,11 @@ class Processor:
         self.begin_scan()
         with self.stream:
             if role == "decompress":
+                # nvCOMP allocates pinned host scratch in every decode call, which costs more than
+                # the decoding. Reuse it from a pool, once the copies queued from it have run.
+                self.pinned = cp.cuda.PinnedMemoryPool()
+                self.released, self.queued = [], []
+                nvcomp.set_pinned_allocator(self._pinned_scratch)
                 self.codec = nvcomp.Codec(algorithm="LZ4", cuda_stream=stream_pointer,
                                          bitstream_kind=nvcomp.BitstreamKind.RAW, device_id=gpu)
                 self.decoding = self.codec.decompression_config(
@@ -58,7 +68,11 @@ class Processor:
                     "attenuation = -logf(fminf(1.0f, fmaxf(1e-6f, t)));",
                     f"tomography_dark_flat_log_{element}")
             else:
+                self.reconstruct_ns = 0
                 self.buffer_plan = memory_plan(scan, self.reconstruction)
+                # The sinogram is a ring over scans: each projection replaces its angle.
+                self.ring_projections = 0
+                self.interval = update_interval(self.buffer_plan, scan["angles"])
                 if self.buffer_plan["sinogram_memory"] == "host":
                     self.host_buffer = HostScanBuffer(scan, cp, self.stream)
                     self.sinogram = self.host_buffer.data
@@ -66,6 +80,30 @@ class Processor:
                 else:
                     self.sinogram = cp.empty((scan["rows"], scan["angles"], scan["columns"]),
                                              dtype=cp.float32)
+                    if self.buffer_plan["output_mode"] == "slices":
+                        # Slice output keeps the projections filtered, as they arrive.
+                        self.slices = SliceReconstructor(self.sinogram.shape, self.theta, cp)
+                        self.slices.configure(self.reconstruction)
+
+    def _pinned_scratch(self, nbytes, stream):
+        released = self.released
+
+        class Scratch:
+            def __init__(self, memory):
+                self.memory, self.ptr = memory, memory.ptr
+
+            def __del__(self):
+                released.append(self.memory)
+        return Scratch(self.pinned.malloc(nbytes))
+
+    def _reuse_scratch(self):
+        """After a decode call: its scratch returns to the pool when the stream reaches here."""
+        event = cp.cuda.Event()
+        event.record(self.stream)
+        self.queued.append((event, self.released[:]))
+        self.released.clear()
+        while self.queued and self.queued[0][0].done:
+            self.queued.pop(0)
 
     def begin_scan(self):
         if hasattr(self, "host_buffer"):
@@ -97,6 +135,14 @@ class Processor:
         if old_size != new_size and hasattr(self, "sirt"):
             # Only keep scratch for the current block layout, not every live setting.
             del self.sirt
+        if hasattr(self, "tomocupy") and (old_size != new_size or any(
+                options.get(key) != self.reconstruction.get(key)
+                for key in ("algorithm", "filter", "center", "dtype"))):
+            # Its plans and grids are fixed to one method, filter, axis and chunk.
+            del self.tomocupy
+        if hasattr(self, "slices"):
+            # A new filter applies to the projections of this scan onwards.
+            self.slices.configure(options)
         self.buffer_plan = plan
         self.reconstruction = dict(options)
 
@@ -115,6 +161,15 @@ class Processor:
         elif options["algorithm"] == "fbp":
             fbp_gpu(sinogram, volume, self.theta, self.gpu, options["filter"],
                     filter_cutoff=options.get("filter_cutoff"))
+        elif options["algorithm"] in TOMOCUPY_ALGORITHMS:
+            if not hasattr(self, "tomocupy"):
+                from tomocupy_backend import TomocupyGPU
+
+                self.tomocupy = TomocupyGPU(
+                    options["algorithm"], self.theta, self.scan["columns"], self.buffer_plan["block_rows"],
+                    self.gpu, options["filter"], center=options.get("center"),
+                    dtype=options.get("dtype") or "float32")
+            self.tomocupy.run(sinogram, volume)
         else:
             raise ValueError(f"unknown GPU reconstruction algorithm: {options['algorithm']}")
 
@@ -156,7 +211,7 @@ class Processor:
             return
         for block in slice_blocks(self.scan["rows"], options.get("slices_per_block", 0)):
             sinogram, volume = self.sinogram[block], output[block]
-            if method in ("sirt", "fbp"):
+            if method in ("sirt", "fbp") or method in TOMOCUPY_ALGORITHMS:
                 self._gpu_reconstruct_block(sinogram, volume)
             elif method == "gridrec":
                 # CPU staging is limited to one block; keep its result until upload completes.
@@ -223,6 +278,19 @@ class Processor:
                     self.transfers.finish()
                 raise
 
+    def reconstruct_slices(self, output_pointer, planes):
+        """Backproject three planes from the filtered ring into a borrowed publisher slot."""
+        if not update_due(self.ring_projections, self.projections - 1, self.scan["angles"], self.interval):
+            raise ValueError("slices follow an update boundary of a full ring")
+        with self.stream:
+            size = self.buffer_plan["slice_size"]
+            output = array_at(output_pointer, (3, size, size), cp.float32, self.gpu)
+            begin = time.perf_counter_ns()
+            self.slices.backproject(self.sinogram, np.asarray(planes, np.float64).reshape(3, 3, 3), output)
+            # Wait for the kernel so the reported time is the backprojection, not its launch.
+            self.stream.synchronize()
+            self.reconstruct_ns += time.perf_counter_ns() - begin
+
     def consume(self, pointer, nbytes, output_pointer, kind, projection, theta):
         with self.stream:
             if self.role == "decompress":
@@ -242,6 +310,7 @@ class Processor:
                 output = array_at(output_pointer, (self.detector_frame_bytes,), cp.uint8, self.gpu)
                 self.codec.decode(nvcomp.as_array(compressed, cuda_stream=self.stream.ptr),
                                   out=output, decompression_config=self.decoding)
+                self._reuse_scratch()
                 self.received += 1
                 return
             dtype = self.detector_dtype if self.role == "correct" else cp.float32
@@ -271,13 +340,19 @@ class Processor:
                     raise ValueError("reconstruction expects all corrected projections in order")
                 if hasattr(self, "host_buffer"):
                     self.host_buffer.append(source, projection)
+                elif hasattr(self, "slices"):
+                    self.slices.store(self.sinogram, projection, source)
                 else:
                     cp.copyto(self.sinogram[:, projection, :], source)
-                if projection + 1 == self.scan["angles"] and self.buffer_plan["output_mode"] != "blocks":
+                self.ring_projections += 1
+                if self.buffer_plan["output_mode"] == "volume" and update_due(
+                        self.ring_projections, projection, self.scan["angles"], self.interval):
                     output = array_at(output_pointer,
                                       (self.scan["rows"], self.scan["columns"], self.scan["columns"]),
                                       cp.float32, self.gpu)
+                    begin = time.perf_counter_ns()
                     self.reconstruct(output)
+                    self.reconstruct_ns += time.perf_counter_ns() - begin
             self.projections += 1
 
     def consume_many(self, frames):
@@ -289,8 +364,8 @@ class Processor:
         """
         if not frames:
             return
-        if len(frames) > 16:
-            raise ValueError("processing batch exceeds the supported capacity of 16")
+        if len(frames) > MAX_BATCH:
+            raise ValueError(f"processing batch exceeds the supported capacity of {MAX_BATCH}")
         if len(frames) == 1:
             self.consume(*frames[0])
             return
@@ -313,10 +388,13 @@ class Processor:
                 raise ValueError("compressed batch extends beyond the scan")
         with self.stream:
             if not hasattr(self, "compressed_batch"):
-                stride = ((self.compressed.nbytes + 255) // 256) * 256
-                self.compressed_batch = cp.empty((16, stride), dtype=cp.uint8)
-                self.batch_decoding = {}
+                self.compressed_batch, self.batch_decoding = cp.empty((0, 0), dtype=cp.uint8), {}
             count = len(frames)
+            if count > len(self.compressed_batch):
+                # Sized for the largest batch seen; queued reads of the smaller scratch end first.
+                self.stream.synchronize()
+                stride = ((self.compressed.nbytes + 255) // 256) * 256
+                self.compressed_batch = cp.empty((count, stride), dtype=cp.uint8)
             if count not in self.batch_decoding:
                 self.batch_decoding[count] = self.codec.decompression_config(
                     self.codec.compression_config([self.detector_frame_bytes] * count))
@@ -328,6 +406,7 @@ class Processor:
                 outputs.append(array_at(output_pointer, (self.detector_frame_bytes,),
                                         cp.uint8, self.gpu))
             self.codec.decode(sources, out=outputs, decompression_config=self.batch_decoding[count])
+            self._reuse_scratch()
             self.received += count
 
     def _validate_projections(self, frames, first):
@@ -380,23 +459,31 @@ class Processor:
                     }
                 '''.replace("RAW_TYPE", raw_type), "correct_frames")
             pixels = int(np.prod(self.shape))
-            count = len(projections)
-            self.correct_frames((min(65535, (pixels * count + 255) // 256),), (256,),
-                                (frame_pointers(projections), self.dark, self.flat,
-                                 np.uint64(pixels), np.uint64(count)))
-            self.projections += count
+            for start in range(0, len(projections), 16):
+                group = projections[start:start + 16]
+                count = len(group)
+                self.correct_frames((min(65535, (pixels * count + 255) // 256),), (256,),
+                                    (frame_pointers(group), self.dark, self.flat,
+                                     np.uint64(pixels), np.uint64(count)))
+            self.projections += len(projections)
 
     def _reconstruct_many(self, frames):
         if any(frame[1] != int(np.prod(self.shape)) * 4 for frame in frames):
             raise ValueError("upstream array length differs from the scan")
         self._validate_projections(frames, self.projections)
-        final = self.projections + len(frames) == self.scan["angles"]
-        if final and self.buffer_plan["output_mode"] != "blocks" and not frames[-1][2]:
-            raise ValueError("reconstruction needs a publisher output at the end of the scan")
+        if any(update_due(self.ring_projections + index + 1, frame[4], self.scan["angles"], self.interval)
+               for index, frame in enumerate(frames[:-1])):
+            raise ValueError("reconstruction batch crosses an output boundary")
+        due = update_due(self.ring_projections + len(frames), frames[-1][4], self.scan["angles"], self.interval)
+        if due and self.buffer_plan["output_mode"] == "volume" and not frames[-1][2]:
+            raise ValueError("reconstruction needs a publisher output at an update boundary")
         with self.stream:
             if hasattr(self, "host_buffer"):
                 for pointer, _, _, _, projection, _ in frames:
                     self.host_buffer.append(array_at(pointer, self.shape, cp.float32, self.gpu), projection)
+            elif hasattr(self, "slices"):
+                for pointer, _, _, _, projection, _ in frames:
+                    self.slices.store(self.sinogram, projection, array_at(pointer, self.shape, cp.float32, self.gpu))
             else:
                 if not hasattr(self, "pack_frames"):
                     self.pack_frames = cp.RawKernel(r'''
@@ -414,16 +501,21 @@ class Processor:
                         }
                     ''', "pack_frames")
                 pixels = int(np.prod(self.shape))
-                count = len(frames)
-                self.pack_frames((min(65535, (pixels * count + 255) // 256),), (256,),
-                                 (frame_pointers(frames), self.sinogram, np.uint64(pixels),
-                                  np.uint64(self.shape[1]), np.uint64(self.scan["angles"]),
-                                  np.uint64(self.projections), np.uint64(count)))
+                for start in range(0, len(frames), 16):
+                    group = frames[start:start + 16]
+                    count = len(group)
+                    self.pack_frames((min(65535, (pixels * count + 255) // 256),), (256,),
+                                     (frame_pointers(group), self.sinogram, np.uint64(pixels),
+                                      np.uint64(self.shape[1]), np.uint64(self.scan["angles"]),
+                                      np.uint64(self.projections + start), np.uint64(count)))
             self.projections += len(frames)
-            if final and self.buffer_plan["output_mode"] != "blocks":
+            self.ring_projections += len(frames)
+            if due and self.buffer_plan["output_mode"] == "volume":
                 output = array_at(frames[-1][2], (self.scan["rows"], self.scan["columns"],
                                   self.scan["columns"]), cp.float32, self.gpu)
+                begin = time.perf_counter_ns()
                 self.reconstruct(output)
+                self.reconstruct_ns += time.perf_counter_ns() - begin
 
     def finish(self):
         if self.role == "decompress" and self.received != self.scan["angles"] + 2:

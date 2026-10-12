@@ -18,57 +18,69 @@ sys.path.insert(0, str(HERE.parent))
 from network import environment
 from reconstruction import live_configuration
 from pipeline_control import PipelineControl, PipelineConflict
+from fan_in import NewestVolumes
 from output_blocks import LatestCompleted, OutputCollector, read_complete
+from streaming import Updates, plane_array, plane_list, update_interval
 
 
 class ReconstructionControl:
-    """Serialize HTTP and receive-thread access to a dedicated Tango proxy."""
+    """Serialize HTTP and receive-thread access to dedicated Tango proxies.
 
-    def __init__(self, proxy):
-        self.proxy = proxy
+    Every reconstructor of a pull set receives the same settings in the same order, so their
+    revisions agree. Each applies them to the next scan it takes.
+    """
+
+    def __init__(self, *proxies):
+        self.proxies = proxies
         self.lock = threading.Lock()
+
+    def _each(self, command, *argument):
+        """One state: the requested settings are common, the active scan is the newest started."""
+        states = [json.loads(proxy.command_inout(command, *argument)) for proxy in self.proxies]
+        started = [state["active"] for state in states if state["active"] is not None]
+        return dict(states[0], finished=all(state["finished"] for state in states),
+                    active=max(started, key=lambda active: active["scan_id"]) if started else None)
 
     def settings(self):
         with self.lock:
-            return json.loads(self.proxy.command_inout("GetReconstruction"))
+            return self._each("GetReconstruction")
 
     def configure(self, options):
         with self.lock:
-            state = json.loads(self.proxy.command_inout("GetReconstruction"))
-            options = live_configuration(options, state["detector_columns"])
-            return json.loads(self.proxy.command_inout("ConfigureReconstruction", json.dumps(options)))
+            columns = self._each("GetReconstruction")["detector_columns"]
+            return self._each("ConfigureReconstruction", json.dumps(live_configuration(options, columns)))
 
-    def for_scan(self, scan_id):
+    def configure_slices(self, planes):
+        """Move the three planes of slice output; the next update uses them."""
         with self.lock:
-            return json.loads(self.proxy.command_inout("ReconstructionForScan", str(scan_id)))
+            return json.loads(self.proxies[0].command_inout(
+                "ConfigureSlices", json.dumps(plane_list(plane_array(planes)))))
 
-
-def read_next(sub):
-    # No ring-backed arrays or records escape this call.
-    batch = sub.read(timeout=0.1)
-    if batch is None:
-        return None
-    return (batch.array[-1].copy(), int(batch.records[-1]["scan_id"]),
-            int(batch.records[-1]["index"]))
+    def for_scan(self, scan_id, reconstructor=0):
+        """Settings of a scan, held by the device that reconstructed it."""
+        with self.lock:
+            return json.loads(self.proxies[reconstructor].command_inout("ReconstructionForScan", str(scan_id)))
 
 
 def display_voxels(volume, display_max=0.01, *, inplace=False):
     """Quantize the selected display window; C order is z, y, x."""
     scaled = volume if inplace else np.empty_like(volume)
-    np.multiply(volume, 255 / display_max, out=scaled)
-    np.clip(scaled, 0, 255, out=scaled)
-    return scaled.astype(np.uint8)
+    np.multiply(volume, 65535 / display_max, out=scaled)
+    np.clip(scaled, 0, 65535, out=scaled)
+    return scaled.astype('<u2')
 
 
-def png_slice(volume, axis, index, window_max=0.01, display_max=0.01):
+def png_slice(volume, axis, index, window_max=0.01, display_max=0.01, window_min=0):
     plane = np.take(volume, index, axis=axis)
-    if not np.isfinite(window_max) or not 0 < window_max <= display_max:
-        raise ValueError(f"slice window maximum must be in (0, {display_max}]")
-    if plane.dtype == np.uint8:
-        grayscale = (plane if window_max == display_max else
-                     np.clip(plane * (display_max / window_max), 0, 255).astype(np.uint8))
+    if (not np.isfinite(window_max) or not np.isfinite(window_min) or
+            not 0 <= window_min < window_max <= display_max):
+        raise ValueError(f"slice window must satisfy 0 <= minimum < maximum <= {display_max}")
+    if plane.dtype == np.uint16:
+        values = plane.astype(np.float64) * (display_max / 65535)
     else:
-        grayscale = np.clip(plane * (255 / window_max), 0, 255).astype(np.uint8)
+        values = plane
+    grayscale = np.clip((values - window_min) * (255 / (window_max - window_min)),
+                        0, 255).astype(np.uint8)
     buffer = BytesIO()
     Image.fromarray(grayscale).save(buffer, format="PNG")
     return buffer.getvalue()
@@ -92,19 +104,28 @@ class VolumeHistory:
         self.state = dict(scan_id=None, version=0, shape=None, failure="", outcome=None,
                           received_volumes=0, skipped=0, transport="", display_max=display_max)
 
-    def append(self, volume, scan_id, frame_index, health, reconstruction=None, *, inplace=False):
+    def append(self, volume, scan_id, frame_index, health, reconstruction=None, *, inplace=False,
+               projection=None, planes=None):
+        """Updates within a scan name the last projection of their window, and slices their planes."""
         if volume.ndim != 3 or not all(volume.shape) or not np.isfinite(volume).all():
             raise ValueError("expected a finite, nonempty 3D live volume")
-        if volume.size > self.max_bytes:
+        if volume.size * 2 > self.max_bytes:
             raise ValueError("display volume exceeds history byte limit; increase --history-mib")
         voxels = display_voxels(volume, self.display_max, inplace=inplace)
         voxels.flags.writeable = False
         with self.lock:
-            if self.state["scan_id"] is not None and scan_id <= self.state["scan_id"]:
+            identity = (scan_id, -1 if projection is None else projection)
+            if self.state["scan_id"] is not None and identity <= (
+                    self.state["scan_id"], self.state.get("projection", -1)):
                 raise ValueError("live scan identity did not advance")
             version = self.state["version"] + 1
             meta = dict(version=version, scan_id=scan_id, shape=list(voxels.shape),
                         time_seconds=time.monotonic() - self.started, bytes=voxels.nbytes)
+            if projection is not None:
+                meta["projection"] = projection
+                self.state["projection"] = projection
+            if planes is not None:
+                meta["planes"] = planes
             if reconstruction is not None:
                 meta["reconstruction"] = reconstruction
             # Evict before insertion to keep the retained history within both bounds.
@@ -207,7 +228,7 @@ def make_handler(history, output, control=None, pipeline_control=None):
                         self.respond(volume.tobytes(), "application/octet-stream", headers={
                             "X-Volume-Version": meta["version"], "X-Scan-Id": meta["scan_id"],
                             "X-Volume-Shape": ",".join(map(str, meta["shape"])),
-                            "X-Volume-Format": "uint8-zyx",
+                            "X-Volume-Format": "uint16-le-zyx",
                             "X-Display-Range": f"0,{history.display_max}"})
                     else:
                         axis = int(query.get("axis", ["0"])[0])
@@ -217,7 +238,9 @@ def make_handler(history, output, control=None, pipeline_control=None):
                         if not 0 <= index < volume.shape[axis]:
                             raise ValueError("slice outside volume")
                         window_max = float(query.get("window_max", [str(history.display_max)])[0])
-                        self.respond(png_slice(volume, axis, index, window_max, history.display_max), "image/png")
+                        window_min = float(query.get("window_min", ["0"])[0])
+                        self.respond(png_slice(volume, axis, index, window_max, history.display_max,
+                                               window_min), "image/png")
                 except ValueError as error:
                     self.respond(str(error).encode(), "text/plain", 400)
             else:
@@ -225,7 +248,7 @@ def make_handler(history, output, control=None, pipeline_control=None):
 
         def do_POST(self):
             path = urlsplit(self.path).path
-            if path not in ("/api/reconstruction", "/api/pipeline",
+            if path not in ("/api/reconstruction", "/api/slices", "/api/pipeline",
                             "/api/pipeline/stop", "/api/pipeline/recommend"):
                 self.respond(b"Not found", "text/plain", 404)
                 return
@@ -252,6 +275,8 @@ def make_handler(history, output, control=None, pipeline_control=None):
                     state = selected_control.stop()
                 elif path == "/api/pipeline/recommend":
                     state = selected_control.recommend(options)
+                elif path == "/api/slices":
+                    state = selected_control.configure_slices(options)
                 else:
                     state = selected_control.configure(options)
                 self.respond(json.dumps(state).encode(), "application/json")
@@ -266,12 +291,12 @@ def make_handler(history, output, control=None, pipeline_control=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("device")
+    parser.add_argument("devices", nargs="+", help="the reconstruction device, or each one of a pull set")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--control-dir", type=Path, help="common pipeline restart control directory")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--budget", type=int, default=1048576)
-    parser.add_argument("--output-mode", choices=("volume", "blocks"), default="volume")
+    parser.add_argument("--output-mode", choices=("volume", "blocks", "slices"), default="volume")
     parser.add_argument("--delay", type=float, default=0, help="slow viewer for pressure checks")
     parser.add_argument("--history-volumes", type=int, default=32)
     parser.add_argument("--history-mib", type=int, default=64)
@@ -287,14 +312,29 @@ def main():
     import tango
     import tango_ucx
 
+    if args.output_mode == "blocks" and len(args.devices) > 1:
+        parser.error("block output uses one reconstruction device")
     subscribe = tango_ucx.every if args.output_mode == "blocks" else tango_ucx.latest
-    sub = subscribe(tango.DeviceProxy(args.device), memory="host", budget=args.budget,
-                          batch=1, label="tomography-live-view")
-    proxy = tango.DeviceProxy(args.device)
-    proxy.set_timeout_millis(60000)
-    control = ReconstructionControl(proxy)
-    collector = OutputCollector.from_description(sub.description, control.for_scan, storage_volumes=3)
-    if (collector is not None) != (args.output_mode == "blocks"):
+    subscriptions = [subscribe(tango.DeviceProxy(device), memory="host", budget=args.budget,
+                               batch=1, label="tomography-live-view") for device in args.devices]
+    proxies = [tango.DeviceProxy(device) for device in args.devices]
+    for proxy in proxies:
+        proxy.set_timeout_millis(60000)
+    control = ReconstructionControl(*proxies)
+    description = subscriptions[0].description
+    collector = OutputCollector.from_description(description, control.for_scan, storage_volumes=3)
+    scan = json.loads(description["application_text"])
+    buffering = scan.get("buffering", {})
+    # One device publishes sliding-window updates and slices, several to a scan.
+    streamed = collector is None and bool(
+        buffering.get("output_mode") == "slices" or buffering.get("update_projections"))
+    # Blocks arrive in order from one device; whole volumes come from any device of the set.
+    sub = (subscriptions[0] if collector is not None else
+           Updates(subscriptions[0], scan["scan_id"], scan["angles"],
+                   update_interval(buffering, scan["angles"])) if streamed else
+           NewestVolumes(subscriptions, scan["scan_id"]))
+    if ((collector is not None) != (args.output_mode == "blocks") or
+            (buffering.get("output_mode") == "slices") != (args.output_mode == "slices")):
         sub.close()
         raise ValueError("viewer output mode differs from reconstruction description")
     history = VolumeHistory(args.history_volumes, args.history_mib * 1024**2, args.display_max)
@@ -324,7 +364,7 @@ def main():
             while True:
                 if display_failure:
                     raise display_failure[0]
-                result = read_complete(sub, collector) if collector is not None else read_next(sub)
+                result = read_complete(sub, collector) if collector is not None else sub.read()
                 if result is None:
                     if sub.outcome is not None:
                         break
@@ -333,9 +373,18 @@ def main():
                     mailbox.put(result, sub.health())
                     history.update(assembled_volumes=collector.completed)
                     result = None
+                elif streamed:
+                    volume, record = result
+                    scan_id = int(record["scan_id"])
+                    history.append(volume, scan_id, int(record["index"]), sub.health(),
+                                   control.for_scan(scan_id), projection=int(record["projection"]),
+                                   planes=plane_list(record["planes"]) if "planes" in record.dtype.names else None)
+                    if args.delay:
+                        time.sleep(args.delay)
                 else:
-                    volume, scan_id, frame_index = result
-                    history.append(volume, scan_id, frame_index, sub.health(), control.for_scan(scan_id))
+                    volume, scan_id, frame_index, reconstructor = result
+                    history.append(volume, scan_id, frame_index, sub.health(),
+                                   control.for_scan(scan_id, reconstructor))
                     if args.delay:
                         time.sleep(args.delay)  # Latest delivery may skip; it applies no pressure.
             if collector is not None:
