@@ -1,45 +1,58 @@
 # tango-ucx GPU examples
 
-A separate application project for the GPU interfaces added to `tango-bulk2`. It builds
-against the installed CMake package and imports the installed Python package. It includes
-no library-private headers, fixtures or decoder code. The publisher and subscribers run
-in separate processes and can run on separate nodes. No library count limits change here.
+Runnable Tango publishers and Python subscribers for moving opaque frames into GPU,
+pinned host and ordinary host memory. The programs use the installed
+[tango-ucx](https://github.com/srwohl/tango-ucx) C++ and Python packages and run in
+separate processes, locally or on separate nodes.
 
-| Example | Path exercised |
+Use these examples to integrate CUDA stream handling, borrowed receive buffers,
+asynchronous uploads and archival into an application. They verify payloads and
+ownership through the public API. The tomography example adds an end-to-end processing
+pipeline with compressed archival and a live browser view.
+
+## Choose an example
+
+| Example | What it demonstrates |
 |---|---|
-| `gpu_receive.py` | Opaque GPU receive, per-frame lengths, DLPack 1.0 and raw GPU pointers; CuPy verifies every byte on an explicit non-default CUDA stream |
-| `pinned_upload.py` | Page-locked host receive, asynchronous upload and `release_after`; GPU analysis reads independent output storage after receive Credit can return |
-| `host_archive.py` | GPU source to host receive; stores opaque bytes and an index with the actual lengths and records; `verify_archive.py` reads the files back |
-| `dark_flat.py` | Streamed dark/flat calibration and GPU correction of data frames, using the established subscriber; see [the calibration example](CALIBRATION.md) |
-| `tomography/` | Four Tango device servers: compressed source → GPU LZ4 decompression → GPU correction → selectable GridRec (CPU), FBP (GPU) or SIRT (GPU) reconstruction, with continuous replay, concurrent compressed archival and a live browser view; see [the end-to-end pipeline](tomography/README.md) |
+| [gpu_receive.py](gpu_receive.py) | Opaque GPU receive through DLPack or raw GPU pointers, with CuPy verification on an explicit CUDA stream |
+| [pinned_upload.py](pinned_upload.py) | Pinned host receive, asynchronous upload and `release_after`; analysis continues in independent GPU storage |
+| [host_archive.py](host_archive.py) | Host archival of opaque bytes, per-frame lengths and records, including frames published from GPU memory |
+| [dark_flat.py](dark_flat.py) | Streamed dark/flat calibration and GPU correction; see [CALIBRATION.md](CALIBRATION.md) |
+| [tomography](tomography/README.md) | GPU LZ4 decompression and correction, selectable reconstruction, continuous replay, archival and live viewing |
 
-`opaque_publisher` is a C++ Tango device server. Configure selects `host` or `cuda:N` source
-storage. The CUDA path queues real `cudaMemsetAsync` writes directly into source slots and
-publishes without a caller synchronization. The application supplies each actual byte
-length to `publish_bytes`. The default lengths, 1, 129, 513, 65,539 and 262,144 bytes, exercise
-unaligned pointers, small messages, rendezvous and packed-ring wrap. Each frame is filled
-with `(index * 17 + 3) & 255`; its record carries the value and length. These are generated
-bytes for testing transport and ownership. They are not compressed detector frames.
+`opaque_publisher` is a C++ Tango device server with `host` and `cuda:N` source storage.
+It generates test bytes using `(index * 17 + 3) & 255`, with the value and actual length
+in each record. The default lengths are 1, 129, 513, 65,539 and 262,144 bytes to exercise
+unaligned access, small messages, rendezvous and packed-ring wrap. For compressed
+detector scans, use the tomography example.
 
-## Build against the installed package
+## Requirements and build
 
-From this directory on the development machine:
+Use Linux with Pixi, UCX >=1.21 with CUDA support, cppTango/PyTango >=10, a C++20
+compiler, nlohmann_json >=3.12, NumPy and CuPy >=14. GPU paths require an NVIDIA GPU
+and a driver compatible with CUDA 12.9. Use the Python version that built the installed
+extension. GPU numbers are relative to each process's `CUDA_VISIBLE_DEVICES`.
+
+From this directory, point the build script at the library checkout:
 
 ```sh
+export TANGO_UCX_SOURCE=/path/to/tango-ucx
 ./build_local.sh
 ```
 
-This builds the sibling `tango-bulk2` CUDA package in its existing Pixi GPU environment,
-installs it into `stage/`, and builds this independent project using `find_package`.
-It runs three CTest entries: host TCP, GPU TCP and streamed GPU calibration. The opaque
-pipeline cases use 97 frames and a 4MiB receive budget. The archive checks independently
-reopen both host- and GPU-published files. Calibration checks cover host and GPU publishing
-into GPU and pinned receive, with two calibration generations per run. Both kinds of
-subscriber also run through the HPC launch sequence locally against the separate publisher.
-Build output and dependencies belong to this directory; all library changes remain in the
-library tree. There is no simulated GPU path.
+The script builds the library in its Pixi GPU environment, installs it into `stage/`,
+builds these examples in `build/`, and runs host TCP, GPU TCP and calibration checks.
+A sibling checkout can be selected with `TANGO_UCX_SOURCE=../tango-ucx`.
 
-For an installed HPC package, activate the site's Tango/UCX/CUDA/Python environment and use:
+For host publishing and archival without CUDA or CuPy:
+
+```sh
+TANGO_UCX_SOURCE=/path/to/tango-ucx ./build_host.sh
+```
+
+This uses the library's default environment and creates `stage-host/` and `build-host/`.
+
+To build against an existing installation, activate its Tango/UCX/CUDA/Python environment:
 
 ```sh
 cmake -GNinja -S . -B build -DCMAKE_PREFIX_PATH=/path/to/tango-ucx-prefix \
@@ -48,43 +61,18 @@ cmake --build build
 TANGO_UCX_PREFIX=/path/to/tango-ucx-prefix ctest --test-dir build --output-on-failure
 ```
 
-The environment needs UCX >=1.21 with CUDA support, cppTango and PyTango >=10, a C++20
-compiler, nlohmann_json >=3.12, NumPy and CuPy >=14. The installed package's CMake config
-resolves the C++ dependencies. Use the Python version that built its extension. The source
-publisher needs the CUDA toolkit/runtime but does not need nvcc: it calls the runtime.
-Logical GPU numbers are relative to each process's `CUDA_VISIBLE_DEVICES`.
+Use `EXAMPLES_CUDA=OFF` for a host-only installation. The publisher calls the CUDA
+runtime directly; its build does not require nvcc.
 
-A host-only build is available with `EXAMPLES_CUDA=OFF`, against a host-only tango-ucx
-installation; `./build_host.sh` builds and tests it locally in the default Pixi environment.
-Its smoke test uses `--host-only`, and neither NumPy verification nor the host
-archive imports CuPy. GPU examples still require real hardware.
+## Run locally
 
-## Select the network on both processes
+After `build_local.sh`, activate the library's GPU environment in each terminal:
 
-`network.py` sets UCX policy before the program starts, including the library-specific
-`TANGO_UCX_UCX_*` prefix. Pass it on the publisher node and on every subscriber node.
+```sh
+pixi shell --manifest-path /path/to/tango-ucx/pixi.toml -e gpu
+```
 
-| Profile | `UCX_TLS` | Behavior |
-|---|---|---|
-| `tcp` | `tcp,cuda_copy,self` | Forces network TCP, including on one machine; CUDA storage and kernels still use the actual GPU. Enables the library's GPU-over-TCP opt-in |
-| `rdma` | `rc,cuda` | Selects RC and CUDA support, excludes TCP and shared-memory shortcuts, and disables the TCP opt-in. The subscriber requires a negotiated RC/DC transport |
-| `auto` | `all` | Lets UCX choose; permits TCP and reports the chosen transports |
-
-`--net-devices` selects the local Ethernet interface or RDMA HCA and port. It can differ
-between nodes. Without this flag, the existing UCX environment or UCX's normal selection
-applies. Other UCX tuning settings remain available, including `UCX_PROTO_INFO=y` and
-`UCX_LOG_LEVEL=info`. Profiles and device selection follow the
-[UCX transport configuration documentation](https://openucx.readthedocs.io/en/master/faq.html#which-transports-does-ucx-use).
-
-An RDMA transport in health does not establish GPUDirect RDMA. UCX can stage GPU data through
-host memory; direct GPU registration depends on the cluster's drivers and peer-memory or
-DMA-BUF support. Inspect protocol output on two different nodes to distinguish those paths.
-See [UCX GPU support and RDMA requirements](https://openucx.readthedocs.io/en/master/faq.html#does-ucx-support-zero-copy-for-gpu-memory-over-rdma).
-
-## Run locally with TCP
-
-Activate the development CUDA environment, or use `pixi run --manifest-path
-../tango-bulk2/pixi.toml -e gpu` before the commands below. Run the publisher in one terminal:
+From the examples directory, start the publisher in one terminal:
 
 ```sh
 python network.py --profile tcp --net-devices lo -- \
@@ -92,43 +80,76 @@ python network.py --profile tcp --net-devices lo -- \
   -ORBendPoint giop:tcp:127.0.0.1:22080
 ```
 
-In another terminal:
+In another terminal, configure host publishing and receive 97 frames into GPU memory:
 
 ```sh
 device='127.0.0.1:22080/example/opaque/1#dbase=no'
-
 python control.py "$device" configure --source host
 python network.py --profile tcp --net-devices lo -- \
   python gpu_receive.py "$device" --start 97 --access dlpack
+```
 
-python control.py "$device" configure --source host
-python network.py --profile tcp --net-devices lo -- \
-  python gpu_receive.py "$device" --start 97 --access pointer
+Configure a fresh publisher instance before each run. To use GPU pointers, change
+`--access dlpack` to `--access pointer`. To upload from pinned host receive:
 
+```sh
 python control.py "$device" configure --source host
 python network.py --profile tcp --net-devices lo -- \
   python pinned_upload.py "$device" --start 97
+```
 
+To archive frames published from GPU source slots:
+
+```sh
 python control.py "$device" configure --source cuda:0
 python network.py --profile tcp --net-devices lo -- \
   python host_archive.py "$device" --start 97 --output results/gpu-archive
 python verify_archive.py results/gpu-archive
 ```
 
-Archive directories must be new; existing directories are refused. The same GPU source can
-also feed `gpu_receive.py` or `pinned_upload.py`. Both GPU subscribers allow several batches
-in flight (`--inflight 4` by default). Raw pointer reads must be queued before the GPU view
-ends. DLPack tensors retain their receive batch until deleted. Pinned receive drops the
-batch and its NumPy views after recording upload completion; its output allocations remain
-alive through analysis completion.
+Archive output directories must be new. For host-only runs, use `build-host/opaque_publisher`
+and `network.py --prefix ./stage-host` in the library's default environment.
 
-## Run on separate HPC nodes
+### Ownership and multiple subscribers
 
-Build and install in a shared directory, load the same software environment on both nodes,
-and allow Tango's TCP control traffic between them. UCX bulk transfer uses the selected
-profile independently of Tango control. A no-database Tango address avoids a Tango database.
+GPU subscribers allow several batches in flight (`--inflight 4` by default). Queue raw
+pointer reads before the GPU view ends. DLPack tensors retain their receive batch until
+released. Pinned receive records upload completion, then releases the batch and its
+NumPy views; independent output storage stays alive through analysis completion.
 
-Publisher node, replacing the hostname and HCA with that node's actual names:
+The opaque examples accept `--delivery every|latest|pull`. For several subscribers,
+configure once, start each without `--start`, wait for every `{"ready": true, ...}` line,
+then run `python control.py "$device" start N`. Pullers must use the same `--range`,
+a whole number of batches. Only one process should configure or start the publisher.
+The calibration example uses every delivery so it receives all dark and flat frames.
+
+## Select the network
+
+Wrap the publisher and every subscriber with `network.py`. It sets UCX policy before
+the process starts, including the library-specific `TANGO_UCX_UCX_*` settings, and
+adds the installed Python package from `--prefix` or `TANGO_UCX_PREFIX` (default `stage/`).
+
+| Profile | `UCX_TLS` | Use |
+|---|---|---|
+| `tcp` | `tcp,cuda_copy,self` | TCP comparisons, including on one host; GPU work uses real hardware and GPU-over-TCP receive is enabled |
+| `rdma` | `rc,cuda` | RC/CUDA transport without TCP or shared-memory shortcuts; subscribers require a negotiated RC/DC transport |
+| `auto` | `all` | Let UCX choose and report the negotiated transports |
+
+`--net-devices` selects the local Ethernet interface or HCA and port; names can differ
+between nodes. If omitted, the existing UCX environment/default selection applies.
+Use `UCX_PROTO_INFO=y` or `UCX_LOG_LEVEL=info` to inspect the chosen path.
+An RDMA transport alone does not establish GPUDirect RDMA: GPU registration depends
+on the target drivers and peer-memory or DMA-BUF support, and UCX can stage through
+host memory. See [UCX transport configuration](https://openucx.readthedocs.io/en/master/faq.html#which-transports-does-ucx-use)
+and [GPU RDMA requirements](https://openucx.readthedocs.io/en/master/faq.html#does-ucx-support-zero-copy-for-gpu-memory-over-rdma).
+
+## Run on separate nodes
+
+Install in a shared directory, load the same software environment on both nodes, and
+allow Tango TCP control traffic between them. UCX payload transfer uses the selected
+profile. The examples use no-database Tango addresses.
+
+On the publisher node, replace the hostname and HCA with local values:
 
 ```sh
 python network.py --profile rdma --net-devices mlx5_0:1 -- \
@@ -136,7 +157,7 @@ python network.py --profile rdma --net-devices mlx5_0:1 -- \
   -ORBendPoint giop:tcp:publisher-node:22080
 ```
 
-Subscriber node:
+On the subscriber node:
 
 ```sh
 python network.py --profile rdma --net-devices mlx5_0:1 -- \
@@ -144,48 +165,30 @@ python network.py --profile rdma --net-devices mlx5_0:1 -- \
   --source cuda:0 --example gpu_receive --access pointer --frames 1000
 ```
 
-`hpc_subscriber.py` waits for the publisher, configures a fresh instance, joins a
-subscription and starts it. Change `--example` to `pinned_upload` or `host_archive` for the
-other paths. Change both profiles to `tcp` and use the nodes' Ethernet interfaces to run
-without RDMA. No SSH access or MPI launcher is required by the programs themselves.
+`hpc_subscriber.py` waits for the publisher, configures it, joins and starts acquisition.
+Choose `--example pinned_upload` or `--example host_archive` for the other receive paths.
+For TCP, change both profiles and select each node's Ethernet interface. RDMA needs
+suitable hardware on the target nodes.
 
-For Slurm, `slurm-two-nodes.sh` starts a publisher on the first node and a subscriber on
-the second. Set a shared absolute examples path; add your site's account and partition
-options to `sbatch`. Use a Python/environment already available on compute nodes:
+### Slurm
+
+`slurm-two-nodes.sh` starts a publisher on the first node and a subscriber on the second.
+Set a shared absolute examples path and add the site's account and partition options:
 
 ```sh
 export EXAMPLES_ROOT="$PWD"
 export TANGO_UCX_PREFIX="$PWD/stage"
-export EXAMPLES_NET_DEVICES=mlx5_0:1  # omit to let UCX select; this script uses it on both nodes
+export EXAMPLES_NET_DEVICES=mlx5_0:1
 sbatch --export=ALL,EXAMPLE_NETWORK=rdma,EXAMPLE=gpu_receive,EXAMPLE_SOURCE=cuda:0 slurm-two-nodes.sh
 sbatch --export=ALL,EXAMPLE_NETWORK=rdma,EXAMPLE=pinned_upload,EXAMPLE_SOURCE=host slurm-two-nodes.sh
 sbatch --export=ALL,EXAMPLE_NETWORK=rdma,EXAMPLE=host_archive,EXAMPLE_SOURCE=cuda:0 slurm-two-nodes.sh
-# Select an Ethernet interface, or unset EXAMPLES_NET_DEVICES, before the TCP comparison.
-unset EXAMPLES_NET_DEVICES
-sbatch --export=ALL,EXAMPLE_NETWORK=tcp,EXAMPLE=gpu_receive,EXAMPLE_SOURCE=cuda:0 slurm-two-nodes.sh
 ```
 
-Results go into `results/slurm-<job-id>/`, with publisher and subscriber logs. The subscriber
-reports actual transports, verified frames, payload bytes, skips and elapsed time. Time
-includes Python reductions and verification; this is a correctness example, not a
-transport throughput benchmark. `--expected N` checks an exact count where useful.
+Omit `EXAMPLES_NET_DEVICES` to let UCX select. The launcher uses the same selector on
+both nodes. For TCP comparisons, choose an Ethernet interface or unset that variable,
+and set `EXAMPLE_NETWORK=tcp`.
 
-The opaque examples support every, latest and pull delivery. For several subscribers, run Configure
-once, start each subscriber without `--start`, wait for each `{"ready": true, ...}` line,
-then call `python control.py "$device" start N`. Pullers need the same `--range`, a whole
-number of batches; together their frame indices should cover the run. Only one process
-should initiate Configure or Start. `hpc_subscriber.py` is the single-subscriber shortcut.
-The streamed calibration example requires every delivery to receive all dark and flat frames.
-
-## Validation on this machine
-
-The installed CUDA package built and the separate-process TCP smoke checks passed on the
-RTX 2050, driver 580.178.04 and CUDA 12.9. Checks cover host source to GPU via both interfaces,
-host source to pinned upload, GPU source to host archive, GPU source to GPU pointer analysis,
-and GPU source to pinned upload. A separate host-only build checks host publishing and
-archive verification without CUDA or CuPy. RDMA and Slurm execution require the HPC system;
-this machine has no RDMA HCA. The RDMA profile was also tried locally: UCX refused startup
-with `rc` unavailable, and did not fall back to TCP. Slurm script syntax passes `bash -n`;
-the HPC subscriber's launch sequence passes against the local publisher. The calibration
-checks also passed with real GPU-owned maps and correction through both receive paths;
-see [calibration validation](CALIBRATION.md#validation-on-this-machine).
+Results are saved in `results/slurm-<job-id>/` with both process logs. Subscribers
+report transports, verified frames, bytes, skips and elapsed time; `--expected N`
+checks an exact frame count. Timing includes Python analysis and verification. Use
+[tango-ucx-benchmarks](https://github.com/srwohl/tango-ucx-benchmarks) for transport measurements.
