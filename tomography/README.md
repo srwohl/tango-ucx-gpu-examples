@@ -418,7 +418,7 @@ widths; `fourierrec` and `lprec` then need a power-of-two detector width. Tomocu
 stripe removal and phase retrieval are not exposed.
 
 What to expect, measured on one RTX 2060 SUPER at 256 slices, 720 projections,
-256 columns with an update every 48 projections (`docs/perf-audit/GPU-SATURATION-FOLLOWUP.md`):
+256 columns with an update every 48 projections ([reproduction probes](../docs/perf-audit/README.md)):
 
 | Method | Volumes/s | Against `fbp` |
 | --- | ---: | ---: |

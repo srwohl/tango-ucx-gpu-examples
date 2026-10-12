@@ -1,15 +1,33 @@
-# Run outputs the reports do not cite by content: detector archives, volumes and references.
+# Keep the run guide and probe sources; generate run artifacts locally.
+/*
+!/.gitignore
+!/README.md
+!/probes/
+
+# Generated benchmark outputs and detector data.
+*.log
+*.csv
+*.util
+*.png
+*.txt
+!CMakeLists.txt
 archive/
 *.bin
 *.npy
 *.npz
-# Nsight traces and their exports, about 150 MB. The reports give the commands that record them.
+# Profiler traces and exports.
 traces/
 *.nsys-rep
+*.nsys-rep.*
 *.sqlite
-# Built from the probes' sources.
+# Compiled probes, downloaded sources and local environments.
+*.o
+*.a
 *.so
+__pycache__/
+.pixi/
+build/
 probes/transport_native
-# Run summaries, device reports and probe results. The probes write them.
+# Run summaries, device reports and probe results.
 *.json
 *.jsonl

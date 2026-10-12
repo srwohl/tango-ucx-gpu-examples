@@ -73,6 +73,8 @@ def main():
     parser.add_argument("--angles", type=int, default=360)
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument("--device-server", type=Path)
+    parser.add_argument("--historical-results", type=Path,
+                        help="optional results.json from an earlier FBP pipeline run")
     parser.add_argument("--build-only", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -87,10 +89,11 @@ def main():
         print(binary, flush=True)
         return
     results = []
-    historical = json.loads((AUDIT / "fbp-pipeline-paired/results.json").read_text())
-    historical = [{key: row[key] for key in ("method", "repeat", "elapsed_seconds", "volumes_per_second",
-                                            "reconstruct_seconds", "volumes_verified")} for row in historical]
-    (args.output / "historical-results.json").write_text(json.dumps(historical, indent=2) + "\n")
+    if args.historical_results:
+        historical = json.loads(args.historical_results.read_text())
+        historical = [{key: row[key] for key in ("method", "repeat", "elapsed_seconds", "volumes_per_second",
+                                                "reconstruct_seconds", "volumes_verified")} for row in historical]
+        (args.output / "historical-results.json").write_text(json.dumps(historical, indent=2) + "\n")
     for repeat in range(args.repeats):
         backends = args.backends if repeat % 2 == 0 else list(reversed(args.backends))
         for backend in backends:
