@@ -348,19 +348,27 @@ private:
         throw std::runtime_error("processing cancelled");
     }
     void produce(std::stop_token stop) {
-        py::gil_scoped_acquire gil;
-        py::object dynamic = py::none();
-        if(cfg.scan.at("source").contains("orb_period"))
-            dynamic = py::module_::import("scan").attr("DynamicPhantom")(
-                cfg.file.parent_path().string(),
-                py::module_::import("json").attr("loads")(cfg.scan.dump()));
-        const bool animate = !dynamic.is_none();
-        py::gil_scoped_release release;
         const bool raw = cfg.scan.value("codec", "lz4-raw") == "raw";
         std::ifstream data(cfg.file.parent_path() / cfg.scan.value("payload_file", raw ? "raw.bin" : "compressed.bin"), std::ios::binary);
         if(!data) throw std::runtime_error("cannot open detector payloads");
+        // A changing phantom is stored whole: the projections of each brightness, and where
+        // each begins. scan.py's orb_phase names the brightness of a scan.
+        const auto &source = cfg.scan.at("source");
+        const auto period = source.value("orb_period", std::uint64_t(0));
+        const auto angles = cfg.scan.at("angles").get<std::uint64_t>();
+        std::ifstream phases;
+        std::vector<std::uint64_t> offsets;
+        if(period) {
+            offsets.resize((period / 2 + 1) * angles + 1);
+            std::ifstream index(cfg.file.parent_path() / source.at("phase_index").get<std::string>(), std::ios::binary);
+            index.read(reinterpret_cast<char *>(offsets.data()),
+                       static_cast<std::streamsize>(offsets.size() * sizeof(std::uint64_t)));
+            phases.open(cfg.file.parent_path() / source.at("phase_file").get<std::string>(), std::ios::binary);
+            if(!index || !phases) throw std::runtime_error("cannot open phantom phases");
+        }
         for(std::uint64_t cycle = 0; !cfg.scan_count || cycle < cfg.scan_count; ++cycle) {
           if(cycle && finish_requested.load()) break;
+          const auto phase = period ? std::min(cycle % period, period - cycle % period) : 0;
           const auto next_scan = std::chrono::steady_clock::now() +
                                  std::chrono::milliseconds(cfg.scan_period_ms);
           data.clear();
@@ -369,13 +377,14 @@ private:
             auto slot = acquire(stop);
             auto bytes = entry.at("bytes").get<std::size_t>();
             if(bytes > slot.payload().size()) throw std::runtime_error("compressed frame too large");
-            if(animate && entry.at("kind") == 2) {
-                py::gil_scoped_acquire frame_gil;
-                const auto compressed = dynamic.attr(raw ? "raw" : "compressed")(
-                    cycle, entry.at("projection").get<std::uint64_t>()).cast<std::string>();
-                bytes = compressed.size();
+            if(period && entry.at("kind") == 2) {
+                const auto at = phase * angles + entry.at("projection").get<std::uint64_t>();
+                bytes = offsets[at + 1] - offsets[at];
                 if(bytes > slot.payload().size()) throw std::runtime_error("compressed frame too large");
-                std::memcpy(slot.payload().data(), compressed.data(), bytes);
+                phases.seekg(static_cast<std::streamoff>(offsets[at]));
+                phases.read(reinterpret_cast<char *>(slot.payload().data()),
+                            static_cast<std::streamsize>(bytes));
+                if(!phases) throw std::runtime_error("truncated phantom phases");
                 data.seekg(entry.at("bytes").get<std::streamoff>(), std::ios::cur);
             } else {
                 data.read(reinterpret_cast<char *>(slot.payload().data()),

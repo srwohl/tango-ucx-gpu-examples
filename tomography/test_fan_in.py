@@ -94,6 +94,15 @@ class OrderedVolumeTests(unittest.TestCase):
 
 
 class NewestVolumeTests(unittest.TestCase):
+    def test_owned_display_batch_is_returned_without_another_copy(self):
+        array = np.array([[[[123, 456]]]], dtype=np.uint16)
+        subscription = Subscription([])
+        subscription.read = lambda timeout=None: SimpleNamespace(
+            frames=1, array=array, records=[dict(scan_id=7, calibration_id=40)], owns_array=True)
+        result = NewestVolumes([subscription], 7).read(timeout=0)
+        self.assertTrue(np.shares_memory(result[0], array))
+        self.assertEqual(result[0].dtype, np.uint16)
+
     def test_the_newest_scan_is_shown_and_older_arrivals_are_skipped(self):
         volumes = NewestVolumes([Subscription([7, 10]), Subscription([8, 9, 13])], 7)
         shown = [(scan_id, offset, device) for _, scan_id, offset, device in drain(volumes)]

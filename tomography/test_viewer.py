@@ -1,11 +1,15 @@
 """CPU-only history and HTTP checks; no Tango server or GPU required."""
 from http.server import ThreadingHTTPServer
+from contextlib import contextmanager
 from io import BytesIO
 import json
+import os
 from pathlib import Path
 import tempfile
 import threading
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 import urllib.error
 import urllib.request
 
@@ -15,12 +19,23 @@ from PIL import Image
 from pipeline_control import MAX_BATCH, PipelineControl, atomic_json
 from test_pipeline_control import running_state
 from reconstruction import configuration
-from viewer import ReconstructionControl, VolumeHistory, display_voxels, make_handler
+from viewer import DisplayVolumes, ReconstructionControl, VolumeHistory, display_voxels, make_handler
 
 HEALTH = dict(skipped=0, transport="tcp")
 
 
 class HistoryTests(unittest.TestCase):
+    def test_gpu_encoded_display_is_retained_without_copy_or_conversion(self):
+        voxels = np.array([[[0, 32767, 65535]]], dtype='<u2')
+        history = VolumeHistory()
+        with patch('viewer.display_voxels', side_effect=AssertionError('unexpected conversion')):
+            history.append(voxels, 1, 0, HEALTH, display_encoded=True)
+        self.assertIs(history.get(1)[0], voxels)
+        self.assertFalse(voxels.flags.writeable)
+        self.assertEqual(history.snapshot()['buffered_bytes'], 6)
+        with self.assertRaisesRegex(ValueError, 'uint16'):
+            history.append(np.zeros((1, 1, 3), np.float32), 2, 1, HEALTH, display_encoded=True)
+
     def test_sixteen_bit_display_preserves_sub_eight_bit_detail(self):
         source = np.array([[[.005, .005001, .005002]]], dtype=np.float32)
         original = source.copy()
@@ -421,6 +436,39 @@ class PipelineHTTPTests(unittest.TestCase):
             self.get("/api/pipeline")
         self.assertEqual(result.exception.code, 503)
         result.exception.close()
+
+
+@unittest.skipUnless(os.environ.get('TOMOGRAPHY_TEST_GPU') == '1', 'set TOMOGRAPHY_TEST_GPU=1')
+class GPUDisplayTests(unittest.TestCase):
+    def subscription(self, arrays):
+        import cupy as cp
+        batches = []
+        for array in arrays:
+            tensor = cp.asarray(array[None])
+
+            @contextmanager
+            def gpu_view(stream=None, tensor=tensor):
+                yield tensor
+
+            batches.append(SimpleNamespace(frames=1, records=np.array([1]), gpu_view=gpu_view))
+        sub = SimpleNamespace(read=lambda timeout=None: batches.pop(0) if batches else None)
+        return DisplayVolumes(sub, cp, 0, .01)
+
+    def test_gpu_conversion_matches_cpu_and_owns_each_download(self):
+        source = np.random.default_rng(42).uniform(-.01, .02, (3, 7, 11)).astype(np.float32)
+        sub = self.subscription([source, np.zeros_like(source)])
+        first = sub.read()
+        np.testing.assert_array_equal(first.array[0], display_voxels(source))
+        self.assertTrue(first.owns_array)
+        second = sub.read()
+        self.assertFalse(np.shares_memory(first.array, second.array))
+        np.testing.assert_array_equal(first.array[0], display_voxels(source))
+        self.assertIsNone(sub.read())
+
+    def test_gpu_rejects_nonfinite_input_before_display(self):
+        for value in (np.nan, np.inf, -np.inf):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'finite'):
+                self.subscription([np.full((1, 2, 3), value, np.float32)]).read()
 
 
 if __name__ == "__main__":

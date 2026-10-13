@@ -58,14 +58,18 @@ brightens again over 40 tomograms. Use `--phantom-period 80` for a slower cycle 
 The density stays constant throughout each tomogram, so every reconstructed volume
 represents a consistent object. Run `pixi run tomography-live` to see it pulse.
 
-Two projection bases are computed once on the GPU and stored in memory-mapped files.
-Playback combines them, converts to detector counts and compresses one frame at a
-time; it does not store a sequence of scans or reproject a volume per tomogram.
-Additional playback scratch memory scales with detector frame size, and basis disk
-space scales with one scan, regardless of playback length or brightness period.
-Generation and LZ4 compression run on the source CPU; large frames can limit source
-throughput. Archive checks and volume references follow the changing density;
-`--no-verify-volumes` skips the extra reference reconstruction per tomogram.
+Two projection bases are computed once on the GPU. From them the projections of every
+brightness are converted to detector counts, compressed and stored when the scan is
+prepared, so the source only reads frames while it plays. The orb dims and brightens alike:
+a period of N tomograms holds N / 2 + 1 different scans, whatever the playback length.
+That is 3.7 GiB for a raw 360 × 360 detector with 720 projections and the default period;
+a shorter `--phantom-period` stores fewer. Archive checks and volume references follow the
+changing density; `--no-verify-volumes` skips the extra reference reconstruction per tomogram.
+
+A prepared phantom scan is kept in `~/.cache/tango-ucx-tomography` and linked into later
+runs with the same detector size, projections, period and codec, including restarts from
+the live controls. The least recently used scans are removed beyond 8 GiB.
+`--scan-cache DIR` keeps them elsewhere; `--no-scan-cache` prepares the scan again.
 
 ### Select GPU placement and transport
 
@@ -130,9 +134,24 @@ excludes TCP but does not certify GPUDirect. Confirm the path with UCX protocol
 output and CUDA traces on the target hardware. See
 [UCX GPU transport requirements](https://openucx.readthedocs.io/en/master/faq.html#working-with-gpu).
 This launcher still starts all devices on one machine; use the examples project's
-separate-node launchers to exercise inter-node GPU transport. The source archive,
-volume writer and browser viewer use host memory, and GridRec stages its
-reconstruction through the CPU. Select SIRT or FBP for GPU reconstruction.
+separate-node launchers to exercise inter-node GPU transport. The source archive
+uses host memory, and GridRec stages its reconstruction through the CPU.
+With CUDA transport, the volume writer receives on the reconstruction GPU before
+downloading. The browser viewer receives whole volumes and slices on that GPU,
+checks finiteness and converts the display window to uint16 there, then downloads
+only the owned display array. It avoids the extra CPU volume copy and conversion;
+187 MB float32 volumes become 93 MB display downloads. TCP and block output retain
+the host viewer path. Standalone `viewer.py --gpu N` selects GPU display conversion.
+
+[Kiln](https://github.com/MPanknin/kiln-render) could render these uint16 display
+volumes using WebGPU. Its current
+[data provider interface](https://github.com/MPanknin/kiln-render/blob/main/src/data/data-provider.ts)
+returns CPU `Uint8Array`/`Uint16Array` bricks; its renderer uploads them to a GPU atlas.
+The [headless engine](https://github.com/MPanknin/kiln-render/blob/main/src/engine.ts)
+accepts a caller's WebGPU device, but that does not import CUDA allocations.
+There is no existing CUDA/UCX zero-copy path in those interfaces. A native rendering
+bridge with GPU memory sharing would need separate integration and synchronization;
+the browser path still requires a host transfer and WebGPU upload.
 
 ### Share reconstruction among several devices
 
@@ -594,7 +613,9 @@ pixi run tomography --algorithm fbp --scan-period 0 --scans 100 \
 ```
 
 `--no-verify` skips independent reconstruction, numeric comparison and phantom-error
-calculation; finite-value checks and saved archive verification remain enabled. It is an
+calculation. Finite-value checks run when verification or saving is enabled; combining
+`--no-verify --no-save` skips the writer's full-volume finite-value scan. Saved archive
+verification remains enabled. It is an
 alias of `--no-verify-volumes`. `--no-save` removes the detector archive subscriber, per-volume files and
 final plots; prepared input, logs and small run summaries remain. `--no-decompress`
 publishes original uint16/float32 detector frames straight from the source to correction,
@@ -930,8 +951,10 @@ pixi run python -m unittest discover -s tomography -p 'test_*.py'
 The launcher compares every volume with an independent reference reconstruction on the
 host, which takes longer than reconstructing it and holds the reconstruction devices'
 output slots meanwhile. `--no-verify-volumes` skips that comparison to measure the
-pipeline itself; volumes are still written, counted and checked for finite values, the
-compressed archive is still verified, and `summary.json` records `volumes_verified`.
+pipeline itself; volumes are still counted, and `summary.json` records `volumes_verified`.
+With saving enabled, volumes are written and checked for finite values, and the
+compressed archive is verified. Disabling both verification and saving skips the
+writer's finite-value scan, but volumes are still received and downloaded to the host.
 
 The receive budget includes the library's bookkeeping as well as payload storage.
 Without `--budget`, each link is sized to hold one scan of corrected frames, at most

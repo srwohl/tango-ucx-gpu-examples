@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import unittest.mock
 
 import h5py
 import lz4.block
@@ -12,7 +13,9 @@ import numpy as np
 
 from demo import parse_args, reconstruction_options, streaming_rates, verify_archive, workload_description
 from pipeline_control import link_budget
-from scan import DynamicPhantom, _write_scan, from_hdf5, hdf5_dimensions, orb_mask, orb_scale, selection, uncompressed_scan
+import scan as scan_module
+from scan import (DynamicPhantom, _write_phases, _write_scan, detector_counts, from_hdf5, generate, hdf5_dimensions,
+                  orb_mask, orb_phase, orb_scale, selection, uncompressed_scan)
 
 
 class DynamicPhantomTests(unittest.TestCase):
@@ -25,26 +28,43 @@ class DynamicPhantomTests(unittest.TestCase):
         np.testing.assert_array_equal(frames[1], self.flat)
         for projection in range(4):
             np.testing.assert_array_equal(frames[projection + 2], self.dynamic.frame(0, projection))
-            np.testing.assert_array_equal(np.frombuffer(self.dynamic.raw(4, projection), np.uint16).reshape(3, 8),
-                                          self.dynamic.frame(4, projection))
+
+    def prepare(self, directory, codec):
+        """A scan of 4 projections whose phases are stored as generate() stores them."""
+        directory.mkdir()
+        raw = np.rint(self.dark + 4000 * np.exp(-self.base - self.orb)).astype(np.uint16)
+        scan = _write_scan(directory, np.arange(4, dtype=np.float32), self.dark, self.flat, raw,
+                           dict(type="phantom", orb_period=8), codec=codec)
+        # Phases are stored from (rows, angles, columns) projections, as ASTRA returns them.
+        scan["source"].update(_write_phases(
+            directory, self.base.transpose(1, 0, 2), self.orb.transpose(1, 0, 2), self.dark,
+            self.flat - self.dark, 8, codec))
+        return scan
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.directory = self.root / "scan"
-        self.directory.mkdir()
         self.dark = np.full((3, 8), 16, np.uint16)
         self.flat = np.full((3, 8), 4016, np.uint16)
         self.base = np.full((4, 3, 8), .1, np.float32)
         self.orb = np.zeros_like(self.base)
         self.orb[:, 1, 3:5] = .4
-        np.save(self.directory / "attenuation.npy", self.base)
-        np.save(self.directory / "orb.npy", self.orb)
-        raw = np.rint(self.dark + 4000 * np.exp(-self.base - self.orb)).astype(np.uint16)
-        self.scan = _write_scan(self.directory, np.arange(4, dtype=np.float32),
-                                self.dark, self.flat, raw, dict(type="phantom", orb_period=8))
+        self.scan = self.prepare(self.directory, "lz4-raw")
         self.dynamic = DynamicPhantom(self.directory, self.scan)
+
+    def test_stored_phases_hold_every_brightness_in_either_codec(self):
+        self.assertEqual([orb_phase(cycle, 8) for cycle in range(10)], [0, 1, 2, 3, 4, 3, 2, 1, 0, 1])
+        raw = DynamicPhantom(self.root / "raw", self.prepare(self.root / "raw", "raw"))
+        self.assertEqual(len(raw.offsets), 5 * 4 + 1)
+        self.assertEqual(raw.payloads.size, 5 * 4 * 48)
+        for cycle in range(9):
+            for projection in range(4):
+                expected = detector_counts(self.base[projection] + orb_scale(cycle, 8) * self.orb[projection],
+                                           self.dark, self.flat - self.dark)
+                np.testing.assert_array_equal(self.dynamic.frame(cycle, projection), expected)
+                self.assertEqual(raw.payload(cycle, projection), expected.tobytes())
 
     def test_local_brightness_changes_and_cycle_wraps(self):
         bright = self.dynamic.frame(0, 0)
@@ -52,10 +72,9 @@ class DynamicPhantomTests(unittest.TestCase):
         np.testing.assert_array_equal(bright[self.orb[0] == 0], dim[self.orb[0] == 0])
         self.assertTrue(np.all(bright[self.orb[0] > 0] < dim[self.orb[0] > 0]))
         np.testing.assert_array_equal(bright, self.dynamic.frame(8000, 0))
-        self.assertIsInstance(self.dynamic.base, np.memmap)
-        self.assertIsInstance(self.dynamic.orb, np.memmap)
+        self.assertIsInstance(self.dynamic.payloads, np.memmap)
         for cycle in range(8):
-            decoded = np.frombuffer(lz4.block.decompress(self.dynamic.compressed(cycle, 0),
+            decoded = np.frombuffer(lz4.block.decompress(self.dynamic.payload(cycle, 0),
                                                        uncompressed_size=48), np.uint16).reshape(3, 8)
             np.testing.assert_array_equal(decoded, self.dynamic.frame(cycle, 0))
             expected = -np.log((self.dynamic.frame(cycle, 0).astype(np.float64) - 16) / 4000)
@@ -69,7 +88,7 @@ class DynamicPhantomTests(unittest.TestCase):
         with (archive / "payloads.bin").open("wb") as payloads, (archive / "records.jsonl").open("w") as records:
             for cycle in range(9):
                 for entry in self.scan["frames"]:
-                    payload = (self.dynamic.compressed(cycle, entry["projection"]) if entry["kind"] == 2
+                    payload = (self.dynamic.payload(cycle, entry["projection"]) if entry["kind"] == 2
                                else original[entry["offset"]:entry["offset"] + entry["bytes"]])
                     record = dict(entry, index=position, offset=offset, bytes=len(payload),
                                   scan_id=cycle + 1, calibration_id=cycle + 1)
@@ -92,6 +111,65 @@ class DynamicPhantomTests(unittest.TestCase):
         self.assertEqual(orb_mask(64, 8).shape, (8, 64, 64))
         self.assertTrue(orb_mask(64, 8).any())
         self.assertAlmostEqual(float(orb_scale(4, 8)), .2)
+
+
+class ScanCacheTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.generated = []
+
+        def write(directory, pixels, slices, angles, gpu, orb_period, codec):
+            directory.mkdir()
+            self.generated.append(pixels)
+            (directory / "detector.bin").write_bytes(bytes(pixels))
+            (directory / "scan.json").write_text(json.dumps(dict(columns=pixels, codec=codec)))
+            return dict(columns=pixels, codec=codec)
+        patcher = unittest.mock.patch.object(scan_module, "_generate", write)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_scan_is_generated_once_and_survives_its_run(self):
+        cache = self.root / "cache"
+        first = generate(self.root / "a", 64, 8, 96, 0, 40, codec="raw", cache=cache)
+        self.assertEqual(generate(self.root / "b", 64, 8, 96, 0, 40, codec="raw", cache=cache), first)
+        self.assertEqual(self.generated, [64])
+        self.assertEqual((self.root / "b/detector.bin").read_bytes(), bytes(64))
+        # A run adds its settings to its own scan.json, not to the stored one.
+        (self.root / "a/scan.json").write_text("{}")
+        self.assertEqual(generate(self.root / "c", 64, 8, 96, 0, 40, codec="raw", cache=cache), first)
+        # Other geometry, period or codec is another scan; without a cache nothing is stored.
+        generate(self.root / "d", 64, 8, 96, 0, 8, codec="raw", cache=cache)
+        generate(self.root / "e", 64, 8, 96, 0, 40, codec="lz4-raw", cache=cache)
+        generate(self.root / "f", 64, 8, 96, 0, 40, codec="raw")
+        self.assertEqual(self.generated, [64] * 4)
+        self.assertEqual(len(list(cache.glob("phantom-*"))), 3)
+        self.assertEqual(list(cache.glob(".phantom-*")), [])
+
+    def test_least_recently_used_scans_leave_a_full_cache(self):
+        cache = self.root / "cache"
+        with unittest.mock.patch.object(scan_module, "CACHE_BYTES", 400):
+            for run, pixels in enumerate((100, 150, 100, 200)):
+                generate(self.root / str(run), pixels, 8, 96, 0, cache=cache)
+                stored = {int(path.name.split("-")[1].split("x")[0]) for path in cache.glob("phantom-*")}
+                self.assertEqual(stored, [{100}, {100, 150}, {100, 150}, {100, 200}][run])
+        # A run keeps the files of a scan that has left the cache.
+        self.assertEqual((self.root / "1/detector.bin").read_bytes(), bytes(150))
+        self.assertEqual(self.generated, [100, 150, 200])
+
+    def test_a_failed_generation_stores_nothing(self):
+        def fail(directory, *_):
+            directory.mkdir()
+            raise RuntimeError("no GPU")
+        with unittest.mock.patch.object(scan_module, "_generate", fail), self.assertRaises(RuntimeError):
+            generate(self.root / "a", 64, 8, 96, 0, cache=self.root / "cache")
+        self.assertEqual(list((self.root / "cache").iterdir()), [])
+
+    def test_launcher_cache_options(self):
+        self.assertEqual(parse_args([]).scan_cache.name, "tango-ucx-tomography")
+        self.assertEqual(parse_args(["--scan-cache", "/tmp/scans"]).scan_cache, Path("/tmp/scans"))
+        self.assertIsNone(parse_args(["--no-scan-cache"]).scan_cache)
 
 
 class HDF5ScanTests(unittest.TestCase):

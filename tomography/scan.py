@@ -1,9 +1,16 @@
 """Prepare a reproducible compressed detector scan and an independent correction reference."""
+from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import json
+import os
 from pathlib import Path
+import shutil
 
 import lz4.block
 import numpy as np
+
+# Generated scans kept for reuse; the least recently used are removed beyond this.
+CACHE_BYTES = 8 * 1024**3
 
 
 def orb_mask(pixels, slices):
@@ -14,8 +21,14 @@ def orb_mask(pixels, slices):
             (horizontal[None, :, None] / .23)**2 + (vertical[:, None, None] / .8)**2 <= 1)
 
 
+def orb_phase(cycle, period):
+    """The orb dims and brightens alike, so a period holds period // 2 + 1 different scans."""
+    cycle %= period
+    return min(cycle, period - cycle)
+
+
 def orb_scale(cycle, period):
-    return np.float32(.6 + .4 * np.cos(2 * np.pi * (cycle % period) / period))
+    return np.float32(.6 + .4 * np.cos(2 * np.pi * orb_phase(cycle, period) / period))
 
 
 def detector_counts(attenuation, dark, response):
@@ -28,31 +41,33 @@ def detector_counts(attenuation, dark, response):
 
 
 class DynamicPhantom:
-    """Two disk-backed projection bases; scratch space is one detector frame."""
+    """The stored projections of every orb brightness: playback reads them and computes nothing."""
 
     def __init__(self, directory, scan):
-        directory = Path(directory)
-        self.period = scan["source"]["orb_period"]
-        self.base = np.load(directory / "attenuation.npy", mmap_mode="r")
-        self.orb = np.load(directory / "orb.npy", mmap_mode="r")
+        directory, source = Path(directory), scan["source"]
+        self.period, self.angles = source["orb_period"], scan["angles"]
+        self.compressed = scan["codec"] != "raw"
+        self.offsets = np.fromfile(directory / source["phase_index"], "<u8")
+        self.payloads = np.memmap(directory / source["phase_file"], np.uint8, "r")
         with np.load(directory / "reference.npz") as reference:
             self.dark = reference["dark"]
             self.flat = reference["flat"]
         self.response = (self.flat - self.dark).astype(np.float32)
 
+    def payload(self, cycle, projection):
+        """One projection of a scan, as the source publishes it."""
+        index = orb_phase(cycle, self.period) * self.angles + projection
+        return self.payloads[self.offsets[index]:self.offsets[index + 1]].tobytes()
+
     def frame(self, cycle, projection):
-        attenuation = self.base[projection] + orb_scale(cycle, self.period) * self.orb[projection]
-        return detector_counts(attenuation, self.dark, self.response)
-
-    def compressed(self, cycle, projection):
-        return lz4.block.compress(self.frame(cycle, projection).tobytes(), store_size=False)
-
-    def raw(self, cycle, projection):
-        return self.frame(cycle, projection).tobytes()
+        payload = self.payload(cycle, projection)
+        if self.compressed:
+            payload = lz4.block.decompress(payload, uncompressed_size=self.dark.nbytes)
+        return np.frombuffer(payload, np.uint16).reshape(self.dark.shape)
 
     def sinogram(self, cycle):
-        expected = np.empty((self.dark.shape[0], len(self.base), self.dark.shape[1]), np.float32)
-        for projection in range(len(self.base)):
+        expected = np.empty((self.dark.shape[0], self.angles, self.dark.shape[1]), np.float32)
+        for projection in range(self.angles):
             transmission = (self.frame(cycle, projection).astype(np.float64) - self.dark) / self.response
             expected[:, projection, :] = -np.log(np.clip(transmission, 1e-6, 1))
         return expected
@@ -73,7 +88,77 @@ def uncompressed_scan(directory, scan):
     return dict(scan, codec="raw", frames=frames, payload_file="raw.bin")
 
 
-def generate(directory, pixels, slices, angles, gpu, orb_period=0, *, codec="lz4-raw"):
+def _write_phases(directory, attenuation, orb, dark, response, period, codec):
+    """Store the projections of each orb brightness in the detector codec, and where each begins.
+
+    The source then replays a changing phantom without arithmetic. A raw 360 x 360 detector
+    with 720 projections and a period of 40 takes 3.7 GiB.
+    """
+    angles = attenuation.shape[1]
+
+    def payload(phase, projection):
+        frame = detector_counts(attenuation[:, projection, :] +
+                                orb_scale(phase, period) * orb[:, projection, :], dark, response)
+        raw = frame.tobytes()
+        return lz4.block.compress(raw, store_size=False) if codec == "lz4-raw" else raw
+
+    offsets = [0]
+    # Measured: beyond four threads the interpreter lock gives back what the cores gain.
+    with (directory / "phases.bin").open("xb") as payloads, ThreadPoolExecutor(4) as pool:
+        for phase in range(period // 2 + 1):
+            # One brightness at a time bounds the payloads waiting to be written.
+            for data in pool.map(lambda projection: payload(phase, projection), range(angles)):
+                payloads.write(data)
+                offsets.append(offsets[-1] + len(data))
+    np.asarray(offsets, "<u8").tofile(directory / "phases.idx")
+    return dict(phase_file="phases.bin", phase_index="phases.idx")
+
+
+def _stored_bytes(directory):
+    return sum(file.stat().st_size for file in directory.iterdir())
+
+
+def generate(directory, pixels, slices, angles, gpu, orb_period=0, *, codec="lz4-raw", cache=None):
+    """Write a phantom scan. With ``cache``, a scan generated before is linked from there instead."""
+    if cache is None:
+        return _generate(directory, pixels, slices, angles, gpu, orb_period, codec)
+    # This file's digest retires the scans of another version of the generator.
+    digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:12]
+    stored = Path(cache) / f"phantom-{pixels}x{slices}x{angles}-orb{orb_period}-{codec}-{digest}"
+    if not stored.is_dir():
+        stored.parent.mkdir(parents=True, exist_ok=True)
+        building = stored.with_name(f".{stored.name}.{os.getpid()}")
+        try:
+            _generate(building, pixels, slices, angles, gpu, orb_period, codec)
+            try:
+                building.rename(stored)
+            except OSError:
+                if not stored.is_dir():  # Otherwise another run stored the same scan first.
+                    raise
+        finally:
+            shutil.rmtree(building, ignore_errors=True)
+    os.utime(stored)
+    others = sorted((path for path in stored.parent.glob("phantom-*") if path != stored),
+                    key=lambda path: path.stat().st_mtime, reverse=True)
+    total = _stored_bytes(stored)
+    for path in others:
+        total += _stored_bytes(path)
+        if total > CACHE_BYTES:
+            shutil.rmtree(path, ignore_errors=True)
+    directory = Path(directory)
+    directory.mkdir()
+    for file in stored.iterdir():
+        if file.name == "scan.json":
+            shutil.copy(file, directory)  # The launcher adds its settings to this one.
+            continue
+        try:
+            os.link(file, directory / file.name)
+        except OSError:  # Another filesystem.
+            os.symlink(file.resolve(), directory / file.name)
+    return json.loads((directory / "scan.json").read_text())
+
+
+def _generate(directory, pixels, slices, angles, gpu, orb_period, codec):
     import astra
 
     if not astra.use_cuda():
@@ -95,13 +180,11 @@ def generate(directory, pixels, slices, angles, gpu, orb_period=0, *, codec="lz4
             orb, projection_geometry, volume_geometry, gpuIndex=gpu)
         astra.data3d.delete(orb_id)
         del orb
-        np.save(directory / "orb.npy", np.ascontiguousarray(orb_attenuation.transpose(1, 0, 2)))
         source["orb_period"] = orb_period
     projection_id, attenuation = astra.create_sino3d_gpu(
         phantom, projection_geometry, volume_geometry, gpuIndex=gpu)
     astra.data3d.delete(projection_id)
     if orb_period:
-        np.save(directory / "attenuation.npy", np.ascontiguousarray(attenuation.transpose(1, 0, 2)))
         phantom[mask] = np.float32(.01)
     row, column = np.indices((slices, pixels))
     dark = (16 + (row + column) % 7).astype(np.uint16)
@@ -118,6 +201,8 @@ def generate(directory, pixels, slices, angles, gpu, orb_period=0, *, codec="lz4
     if orb_period:
         frame_bytes = slices * pixels * 2
         meta["max_compressed_bytes"] = max(meta["max_compressed_bytes"], frame_bytes + frame_bytes // 255 + 16)
+        meta["source"].update(_write_phases(directory, attenuation, orb_attenuation, dark, response,
+                                            orb_period, codec))
         (directory / "scan.json").write_text(json.dumps(meta, indent=2))
     return meta
 

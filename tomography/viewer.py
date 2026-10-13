@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 import threading
 import time
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
 import numpy as np
@@ -70,6 +71,44 @@ def display_voxels(volume, display_max=0.01, *, inplace=False):
     return scaled.astype('<u2')
 
 
+class DisplayVolumes:
+    """Convert GPU receipts to owned uint16 host display batches."""
+
+    def __init__(self, sub, cp, gpu, display_max):
+        self.sub, self.cp = sub, cp
+        self.device = cp.cuda.Device(gpu)
+        self.scale = np.float32(65535 / display_max)
+        with self.device:
+            self.stream = cp.cuda.Stream(non_blocking=True)
+            self.invalid = cp.zeros(1, dtype=cp.int32)
+            self.convert = cp.ElementwiseKernel(
+                "float32 value, float32 scale", "uint16 output, raw int32 invalid",
+                "if (!isfinite(value)) atomicExch(&invalid[0], 1); "
+                "float scaled = value * scale; "
+                "output = (unsigned short)fminf(fmaxf(scaled, 0.0f), 65535.0f);",
+                "tomography_display_voxels")
+
+    def __getattr__(self, name):
+        return getattr(self.sub, name)
+
+    def read(self, timeout=None):
+        batch = self.sub.read(timeout=timeout)
+        if batch is None:
+            return None
+        records = batch.records.copy()
+        with self.device, self.stream, batch.gpu_view(stream=self.stream.ptr) as view:
+            tensor = self.cp.from_dlpack(view)
+            self.invalid.fill(0)
+            voxels = self.cp.empty(tensor.shape, dtype=self.cp.uint16)
+            self.convert(tensor, self.scale, voxels, self.invalid)
+            array = voxels.get(stream=self.stream)
+            invalid = bool(self.invalid.get(stream=self.stream)[0])
+            del tensor, voxels
+        if invalid:
+            raise ValueError("expected a finite, nonempty 3D live volume")
+        return SimpleNamespace(frames=batch.frames, records=records, array=array, owns_array=True)
+
+
 def png_slice(volume, axis, index, window_max=0.01, display_max=0.01, window_min=0):
     plane = np.take(volume, index, axis=axis)
     if (not np.isfinite(window_max) or not np.isfinite(window_min) or
@@ -105,13 +144,18 @@ class VolumeHistory:
                           received_volumes=0, skipped=0, transport="", display_max=display_max)
 
     def append(self, volume, scan_id, frame_index, health, reconstruction=None, *, inplace=False,
-               projection=None, planes=None):
+               projection=None, planes=None, display_encoded=False):
         """Updates within a scan name the last projection of their window, and slices their planes."""
-        if volume.ndim != 3 or not all(volume.shape) or not np.isfinite(volume).all():
+        if volume.ndim != 3 or not all(volume.shape):
+            raise ValueError("expected a finite, nonempty 3D live volume")
+        if display_encoded:
+            if volume.dtype != np.dtype('<u2'):
+                raise ValueError("expected uint16 display voxels")
+        elif not np.isfinite(volume).all():
             raise ValueError("expected a finite, nonempty 3D live volume")
         if volume.size * 2 > self.max_bytes:
             raise ValueError("display volume exceeds history byte limit; increase --history-mib")
-        voxels = display_voxels(volume, self.display_max, inplace=inplace)
+        voxels = volume if display_encoded else display_voxels(volume, self.display_max, inplace=inplace)
         voxels.flags.writeable = False
         with self.lock:
             identity = (scan_id, -1 if projection is None else projection)
@@ -297,6 +341,7 @@ def main():
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--budget", type=int, default=1048576)
     parser.add_argument("--output-mode", choices=("volume", "blocks", "slices"), default="volume")
+    parser.add_argument("--gpu", type=int, help="receive and convert whole volumes/slices on this CUDA GPU")
     parser.add_argument("--delay", type=float, default=0, help="slow viewer for pressure checks")
     parser.add_argument("--history-volumes", type=int, default=32)
     parser.add_argument("--history-mib", type=int, default=64)
@@ -314,9 +359,16 @@ def main():
 
     if args.output_mode == "blocks" and len(args.devices) > 1:
         parser.error("block output uses one reconstruction device")
+    if args.output_mode == "blocks" and args.gpu is not None:
+        parser.error("GPU display conversion requires whole-volume or slice output")
+    gpu_display = args.gpu is not None
+    memory = f"cuda:{args.gpu}" if gpu_display else "host"
     subscribe = tango_ucx.every if args.output_mode == "blocks" else tango_ucx.latest
-    subscriptions = [subscribe(tango.DeviceProxy(device), memory="host", budget=args.budget,
+    subscriptions = [subscribe(tango.DeviceProxy(device), memory=memory, budget=args.budget,
                                batch=1, label="tomography-live-view") for device in args.devices]
+    if gpu_display:
+        import cupy as cp
+        subscriptions = [DisplayVolumes(sub, cp, args.gpu, args.display_max) for sub in subscriptions]
     proxies = [tango.DeviceProxy(device) for device in args.devices]
     for proxy in proxies:
         proxy.set_timeout_millis(60000)
@@ -378,13 +430,14 @@ def main():
                     scan_id = int(record["scan_id"])
                     history.append(volume, scan_id, int(record["index"]), sub.health(),
                                    control.for_scan(scan_id), projection=int(record["projection"]),
-                                   planes=plane_list(record["planes"]) if "planes" in record.dtype.names else None)
+                                   planes=plane_list(record["planes"]) if "planes" in record.dtype.names else None,
+                                   display_encoded=gpu_display)
                     if args.delay:
                         time.sleep(args.delay)
                 else:
                     volume, scan_id, frame_index, reconstructor = result
                     history.append(volume, scan_id, frame_index, sub.health(),
-                                   control.for_scan(scan_id, reconstructor))
+                                   control.for_scan(scan_id, reconstructor), display_encoded=gpu_display)
                     if args.delay:
                         time.sleep(args.delay)  # Latest delivery may skip; it applies no pressure.
             if collector is not None:

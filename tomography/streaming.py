@@ -229,7 +229,8 @@ class Updates:
                 (identity[1] + 1) % self.interval or (self.last is not None and identity <= self.last)):
             raise ValueError("reconstruction update identity did not advance")
         self.last = identity
-        return batch.array[0].copy(), record.copy()
+        array = batch.array[0]
+        return (array if getattr(batch, "owns_array", False) else array.copy()), record.copy()
 
     def complete(self, record):
         """Does this publication end on a scan boundary, holding exactly that scan?"""

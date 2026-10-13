@@ -216,7 +216,7 @@ def verify_archive(output, scan, completed_scans):
                     if record[key] != expected[key]:
                         raise ValueError(f"archive metadata mismatch: frame {position}, {key}")
                 original = source.read(expected["bytes"])
-                payload = ((dynamic.raw if raw else dynamic.compressed)(cycle, expected["projection"])
+                payload = (dynamic.payload(cycle, expected["projection"])
                            if dynamic is not None and expected["kind"] == 2 else original)
                 size = len(payload)
                 if record["bytes"] != size or archived.read(size) != payload:
@@ -240,7 +240,7 @@ def run(args, output, stop_requested, env):
         scan = from_hdf5(output / "scan", args.hdf5, codec=codec, **hdf5_options(args))
     else:
         scan = generate(output / "scan", args.pixels, args.slices, args.angles, args.gpu,
-                        orb_period=args.phantom_period, codec=codec)
+                        orb_period=args.phantom_period, codec=codec, cache=args.scan_cache)
     scan["reconstruction"] = reconstruction_options(args)
     scan["buffering"] = buffering_options(args, scan)
     memory_plan(scan, scan["reconstruction"])
@@ -369,6 +369,8 @@ def run(args, output, stop_requested, env):
                      "--history-volumes", str(args.view_history_volumes),
                      "--history-mib", str(args.view_history_mib),
                      "--display-max", str(args.display_max)]
+                if memory != "host" and args.output_mode != "blocks":
+                    viewer_command.extend(["--gpu", str(args.reconstruct_gpu)])
                 if getattr(args, "_control_dir", None) is not None:
                     viewer_command.extend(["--control-dir", str(args._control_dir)])
                 viewer = subprocess.Popen(viewer_command, env=env, stdout=live_log, stderr=live_log,
@@ -512,7 +514,7 @@ def run(args, output, stop_requested, env):
                                 if options.get("dtype") == "float16" else 2e-6)
                         np.testing.assert_allclose(result, expected_volume, rtol=3e-4, atol=atol)
                     # Live tuning can intentionally change scale, smoothing or convergence.
-                    if not np.isfinite(result).all():
+                    if (args.verify_volumes or args.saving) and not np.isfinite(result).all():
                         raise ValueError("reconstruction contains nonfinite values")
                     if not complete:
                         intermediate += 1
@@ -792,6 +794,13 @@ def parse_args(argv=None):
     parser.add_argument("--hdf5", type=Path, help="raw HDF5 detector scan; omit to generate a phantom")
     parser.add_argument("--phantom-period", type=int, default=40,
                         help="tomograms per orb brightness cycle (default 40); 0 keeps the static phantom; ignored for HDF5")
+    parser.add_argument("--scan-cache", type=Path, metavar="DIR",
+                        default=Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") /
+                        "tango-ucx-tomography",
+                        help="keep generated phantom scans here and reuse them, up to 8 GiB "
+                        "(default ~/.cache/tango-ucx-tomography); ignored for HDF5")
+    parser.add_argument("--no-scan-cache", dest="scan_cache", action="store_const", const=None,
+                        help="generate the phantom scan again for this run")
     parser.add_argument("--data-path", default="/exchange/data", help="HDF5 projection dataset (angle, row, column)")
     parser.add_argument("--flat-path", default="/exchange/data_white", help="HDF5 flat image or stack")
     parser.add_argument("--dark-path", default="/exchange/data_dark", help="HDF5 dark image or stack")

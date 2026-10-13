@@ -13,7 +13,7 @@ class Volumes:
         self.outcomes = [None] * len(self.subscriptions)
 
     def _read(self, worker, timeout):
-        """One volume copy and its scan identity; no ring-backed array escapes this call."""
+        """One owned volume and its scan identity; no ring-backed array escapes this call."""
         sub = self.subscriptions[worker]
         outcome = sub.outcome
         batch = sub.read(timeout=timeout)
@@ -28,7 +28,8 @@ class Volumes:
         if scan_id < self.scan_id or (self.last[worker] is not None and scan_id <= self.last[worker]):
             raise ValueError("reconstructed scan identity did not advance")
         self.last[worker] = scan_id
-        return batch.array[-1].copy(), scan_id, int(record["calibration_id"])
+        array = batch.array[-1]
+        return (array if getattr(batch, "owns_array", False) else array.copy()), scan_id, int(record["calibration_id"])
 
     @property
     def outcome(self):
